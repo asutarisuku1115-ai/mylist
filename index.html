@@ -122,6 +122,11 @@
   .editbox{background:var(--white);border:1px solid var(--line);border-radius:12px;padding:4px 12px 12px;margin-top:12px}
   .radios{display:flex;gap:14px;flex-wrap:wrap;font-size:14px;margin-top:8px}
   .radios label{display:flex;gap:6px;align-items:center;margin:0;color:var(--ink);font-size:14px}
+  .searchbar{box-shadow:0 6px 10px -8px rgba(38,42,107,.25)}
+  .searchbar .tools{flex-wrap:nowrap;overflow-x:auto;margin:8px -14px 0;padding:0 14px 2px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+  .searchbar .tools::-webkit-scrollbar{display:none}
+  .searchbar .tools > *{flex:none;white-space:nowrap}
+  .searchbar .tools .spacer{display:none}
 </style>
 </head>
 <body>
@@ -129,29 +134,30 @@
 <div id="scroller"><div class="wrap">
   <header><h1>同人誌リスト</h1><div class="count"><b id="total">0</b>冊</div></header>
   <div class="searchbar">
-    <input id="q" class="search" type="search" placeholder="サークル名・タイトル・メモで検索" autocomplete="off" aria-label="検索">
+    <input id="q" class="search" type="search" placeholder="サークル名・タイトル・タグ・メモで検索" autocomplete="off" aria-label="検索">
     <div id="verdict" class="verdict" role="status"></div>
-  </div>
   <div class="tools">
-    <select id="filter" aria-label="表示する本">
-      <option value="own">所持中</option>
-      <option value="gone">廃棄済み</option>
-      <option value="all">すべて</option>
-    </select>
-    <select id="sort" aria-label="並び順">
-      <option value="new">新しい順</option>
-      <option value="old">古い順</option>
-      <option value="circle">サークル順</option>
-    </select>
-    <div class="seg" role="group" aria-label="表示">
-      <button id="vList" aria-pressed="true">リスト</button>
-      <button id="vGrid" aria-pressed="false">表紙</button>
+      <select id="filter" aria-label="表示する本">
+        <option value="own">所持中</option>
+        <option value="gone">廃棄済み</option>
+        <option value="all">すべて</option>
+      </select>
+      <select id="sort" aria-label="並び順">
+        <option value="new">新しい順</option>
+        <option value="old">古い順</option>
+        <option value="circle">サークル順</option>
+      </select>
+      <div class="seg" role="group" aria-label="表示">
+        <button id="vList" aria-pressed="true">リスト</button>
+        <button id="vGrid" aria-pressed="false">表紙</button>
+      </div>
+      <div class="spacer"></div>
+      <button class="importbtn" id="selToggle">選択</button>
+      <button class="importbtn" id="openAdd">＋追加</button>
+      <button class="importbtn" id="openImport">取り込み</button>
     </div>
-    <div class="spacer"></div>
-    <button class="importbtn" id="selToggle">選択</button>
-    <button class="importbtn" id="openAdd">＋追加</button>
-    <button class="importbtn" id="openImport">取り込み</button>
   </div>
+
   <div id="list" class="list"></div>
   <div id="empty" class="empty"></div>
   <div class="savebar" id="savebar"><span id="saveMsg"></span><button id="openExport">リストに保存</button></div>
