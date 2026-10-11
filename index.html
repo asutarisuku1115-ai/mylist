@@ -1,0 +1,700 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="同人誌リスト">
+<meta name="theme-color" content="#F5F6FA">
+<meta name="robots" content="noindex, nofollow">
+<title>同人誌リスト</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{--paper:#F5F6FA;--ink:#262A6B;--sub:#7C7F9C;--line:#DADCEA;--pink:#F0448F;--ok:#1C9A6C;--white:#fff}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:"M PLUS Rounded 1c","Hiragino Maru Gothic ProN","Hiragino Sans","Noto Sans JP",sans-serif;font-size:15px;line-height:1.55;-webkit-text-size-adjust:100%}
+  button,input,textarea,select{font:inherit;color:inherit}
+  :focus-visible{outline:3px solid var(--pink);outline-offset:2px}
+  .wrap{max-width:720px;margin:0 auto;padding:0 14px 60px}
+  header{display:flex;align-items:baseline;justify-content:space-between;padding:18px 0 6px}
+  h1{font-size:22px;font-weight:800;margin:0}
+  .count{font-size:13px;color:var(--sub)} .count b{font-size:20px;color:var(--ink);margin-right:2px}
+  .searchbar{position:sticky;top:0;z-index:5;background:var(--paper);padding:8px 0 10px}
+  .search{width:100%;padding:14px 16px;border:2.5px solid var(--ink);border-radius:14px;background:var(--white);font-size:17px}
+  .search::placeholder{color:#A6A8BF}
+  .verdict{margin-top:10px;padding:12px 14px;border-radius:12px;font-weight:700;display:none}
+  .verdict.has{display:block;background:var(--pink);color:#fff}
+  .verdict.none{display:block;background:#E3F4EC;color:var(--ok)}
+  .verdict small{display:block;font-weight:400;font-size:12px;opacity:.9}
+  .tools{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:4px 0 12px;font-size:13px}
+  .tools select{border:1px solid var(--line);background:var(--white);border-radius:8px;padding:5px 8px;font-size:13px}
+  .seg{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--white)}
+  .seg button{border:0;background:none;padding:5px 10px;font-size:13px;cursor:pointer;color:var(--sub)}
+  .seg button[aria-pressed=true]{background:var(--ink);color:#fff}
+  .tools .spacer{flex:1}
+  .importbtn{border:1.5px solid var(--ink);background:var(--white);border-radius:8px;padding:5px 12px;font-weight:700;cursor:pointer;font-size:13px}
+
+  /* リスト表示 */
+  .list .book{display:flex;gap:0;background:var(--white);border:1px solid var(--line);border-radius:10px;margin-bottom:8px;overflow:hidden;cursor:pointer}
+  .list .cv{width:62px;flex:none;aspect-ratio:7/10;background:#E7E9F3;object-fit:cover;display:block}
+  .list .nocv{width:62px;flex:none;aspect-ratio:7/10;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:20px}
+  .list .body{padding:9px 12px;min-width:0;flex:1}
+  .circle{font-weight:800;font-size:14px}
+  .title{font-size:15px;word-break:break-word}
+  .tags{display:flex;flex-wrap:wrap;gap:5px;margin-top:4px}
+  .tag{font-size:11px;border:1px solid var(--line);border-radius:6px;padding:0 6px;color:var(--sub)}
+  .memo{font-size:12px;background:#EEF0F8;border-radius:6px;padding:2px 7px;margin-top:5px}
+  mark{background:#FFE15A;color:inherit;border-radius:2px}
+
+  /* 表紙表示 */
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:10px}
+  .grid .book{cursor:pointer;min-width:0}
+  .grid .cv,.grid .nocv{width:100%;aspect-ratio:7/10;border-radius:6px;object-fit:cover;display:block;background:#E7E9F3;border:1px solid var(--line)}
+  .grid .nocv{display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:26px;border:0}
+  .grid .body{padding-top:4px}
+  .grid .circle{font-size:11px;font-weight:700;color:var(--sub);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .grid .title{font-size:12px;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .grid .tags,.grid .memo{display:none}
+
+  .empty{text-align:center;color:var(--sub);padding:44px 12px}
+  .empty strong{display:block;color:var(--ink);font-size:17px;margin-bottom:6px}
+  .empty button{margin-top:14px}
+
+  .overlay{position:fixed;inset:0;background:rgba(20,22,60,.45);z-index:10;display:none;align-items:flex-end;justify-content:center}
+  .overlay.open{display:flex}
+  .sheet{background:var(--paper);width:100%;max-width:720px;max-height:92vh;overflow:auto;border-radius:18px 18px 0 0;padding:18px 16px 26px;animation:up .2s ease-out}
+  @keyframes up{from{transform:translateY(30px);opacity:.4}}
+  @media (prefers-reduced-motion:reduce){.sheet{animation:none}}
+  .sheet h2{font-size:18px;margin:0 0 10px;font-weight:800}
+  .detail{display:flex;gap:14px}
+  .detail .big{width:130px;flex:none;aspect-ratio:7/10;border-radius:8px;object-fit:cover;background:#E7E9F3;border:1px solid var(--line)}
+  .detail .info{min-width:0}
+  .detail .circle{font-size:14px} .detail .title{font-size:17px;font-weight:700;margin-top:2px}
+  .link{display:inline-block;margin-top:10px;color:var(--pink);font-weight:700;font-size:14px}
+  label{display:block;font-size:13px;color:var(--sub);margin:14px 0 4px}
+  .field{width:100%;padding:11px 12px;border:1.5px solid var(--line);border-radius:10px;background:var(--white);font-size:16px}
+  .actions{display:flex;gap:10px;margin-top:16px}
+  .btn{flex:1;padding:13px;border-radius:12px;border:0;font-weight:800;cursor:pointer;text-align:center}
+  .btn.primary{background:var(--ink);color:#fff}
+  .btn.ghost{background:var(--white);border:1.5px solid var(--line)}
+  .filebtn{display:block;margin:0;padding:13px;border-radius:12px;background:var(--ink);color:#fff;font-weight:800;text-align:center;cursor:pointer}
+  .filebtn.alt{background:var(--white);color:var(--ink);border:1.5px solid var(--ink)}
+  .filebtn input{display:none}
+  .step{background:var(--white);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:12px}
+  .step h3{margin:0 0 4px;font-size:15px}
+  .step p{margin:0 0 10px;font-size:13px;color:var(--sub)}
+  .result{font-size:13px;margin-top:8px;font-weight:700;color:var(--ok)}
+  .smalllink{background:none;border:0;color:var(--sub);text-decoration:underline;font-size:13px;padding:0;cursor:pointer;margin-top:10px}
+  .toast{position:fixed;left:50%;bottom:30px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:9px 16px;border-radius:999px;font-size:14px;z-index:20;opacity:0;transition:opacity .2s;pointer-events:none;max-width:90vw;text-align:center}
+  .toast.show{opacity:1}
+
+  .book.gone{opacity:.45}
+  .gonetag{font-size:11px;background:#7C7F9C;color:#fff;border-radius:6px;padding:0 6px;font-weight:700}
+  .verdict.past{display:block;background:#ECEDF4;color:var(--ink)}
+  .savebar{position:sticky;bottom:0;z-index:6;display:none;margin:10px -14px 0;padding:10px 14px calc(10px + env(safe-area-inset-bottom));background:var(--ink);color:#fff;align-items:center;gap:10px}
+  .savebar.show{display:flex}
+  .savebar span{flex:1;font-size:14px}
+  .savebar button{border:0;border-radius:10px;background:var(--pink);color:#fff;font-weight:800;padding:9px 14px;cursor:pointer}
+  .btn.warn{background:#fff;border:1.5px solid #7C7F9C;color:#4A4D6E}
+  textarea.field{min-height:110px;font-size:12px}
+  ol.howto{margin:0;padding-left:20px;font-size:13px;color:var(--ink)} ol.howto li{margin-bottom:4px}
+  .chip{display:inline-flex;align-items:center;gap:4px;font-size:13px;border:1px solid var(--line);background:var(--white);border-radius:8px;padding:3px 4px 3px 9px}
+  .chip button{border:0;background:#EEF0F8;color:var(--sub);border-radius:6px;width:22px;height:22px;line-height:1;cursor:pointer;font-size:14px}
+  .tagrow{display:flex;gap:8px;margin-top:8px}
+  .tagrow .field{flex:1;min-width:0}
+  .tagrow button{flex:none;border:0;border-radius:10px;background:var(--ink);color:#fff;font-weight:800;padding:0 16px;cursor:pointer}
+  body{overscroll-behavior-y:none}
+  .overlay .sheet{overscroll-behavior:contain}
+</style>
+</head>
+<body>
+
+<div id="scroller"><div class="wrap">
+  <header><h1>同人誌リスト</h1><div class="count"><b id="total">0</b>冊</div></header>
+  <div class="searchbar">
+    <input id="q" class="search" type="search" placeholder="サークル名・タイトル・メモで検索" autocomplete="off" aria-label="検索">
+    <div id="verdict" class="verdict" role="status"></div>
+  </div>
+  <div class="tools">
+    <select id="filter" aria-label="表示する本">
+      <option value="own">所持中</option>
+      <option value="gone">廃棄済み</option>
+      <option value="all">すべて</option>
+    </select>
+    <select id="sort" aria-label="並び順">
+      <option value="new">新しい順</option>
+      <option value="old">古い順</option>
+      <option value="circle">サークル順</option>
+    </select>
+    <div class="seg" role="group" aria-label="表示">
+      <button id="vList" aria-pressed="true">リスト</button>
+      <button id="vGrid" aria-pressed="false">表紙</button>
+    </div>
+    <div class="spacer"></div>
+    <button class="importbtn" id="openAdd">＋追加</button>
+    <button class="importbtn" id="openImport">取り込み</button>
+  </div>
+  <div id="list" class="list"></div>
+  <div id="empty" class="empty"></div>
+  <div class="savebar" id="savebar"><span id="saveMsg"></span><button id="openExport">リストに保存</button></div>
+</div></div>
+
+<!-- 詳細 -->
+<div class="overlay" id="detailOv">
+  <div class="sheet" role="dialog" aria-modal="true" aria-label="本の詳細">
+    <div class="detail">
+      <img class="big" id="dCover" alt="">
+      <div class="info">
+        <div class="circle" id="dCircle"></div>
+        <div class="title" id="dTitle"></div>
+        <div class="tags" id="dTags"></div>
+        <a class="link" id="dLink" target="_blank" rel="noopener">メロンブックスで開く</a>
+      </div>
+    </div>
+    <button class="filebtn alt" id="dCopyName" style="width:100%;margin-top:14px">表紙のファイル名をコピー</button>
+    <input class="field" id="dName" readonly hidden style="font-size:13px;margin-top:8px">
+    <label for="dTagIn">タグ</label>
+    <div class="tags" id="dTagEdit" style="gap:6px"></div>
+    <div class="tagrow">
+      <input class="field" id="dTagIn" list="dl-tag" autocomplete="off" placeholder="作家名・イベント・ジャンルなど">
+      <button id="dTagAdd" type="button">追加</button>
+    </div>
+    <label for="dMemo">メモ</label>
+    <input class="field" id="dMemo" placeholder="「◯◯の再録」「総集編」など" autocomplete="off">
+    <div class="actions">
+      <button class="btn danger" id="dDel" style="flex:none;background:none;border:0;color:#C2185B;text-decoration:underline;font-weight:700;padding:13px 4px;cursor:pointer">削除</button>
+      <button class="btn warn" id="dGone">廃棄にする</button>
+      <button class="btn primary" id="dSave">完了</button>
+    </div>
+  </div>
+</div>
+
+<!-- 取り込み -->
+<div class="overlay" id="importOv">
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="impTitle">
+    <h2 id="impTitle">取り込み</h2>
+    <div class="step">
+      <h3>1. リストを読み込む</h3>
+      <p>「同人誌リスト」フォルダの「同人誌リスト.txt」を選びます。一度取り込めば次からは不要で、新しく登録したときだけ選び直してください。</p>
+      <label class="filebtn">リストのファイルを選ぶ<input type="file" id="txtFile" accept=".txt,text/plain"></label>
+      <div class="result" id="txtResult"></div>
+    </div>
+    <div class="step">
+      <h3>2. 表紙をまとめて読み込む</h3>
+      <p>「ファイルを選択」→「同人誌表紙」フォルダを開き、右上の「選択」で表紙を全部選んで「開く」。</p>
+      <label class="filebtn">表紙の画像を選ぶ<input type="file" id="imgFiles" accept="image/*" multiple></label>
+      <div class="result" id="imgResult"></div>
+    </div>
+    <div class="step">
+      <h3>3. まとめて取得した本を追加する</h3>
+      <p>ショートカット「まとめて取得」で作られた「まとめ取得.txt」を選びます。持っている本は自動で飛ばします。表紙はこのあと2.でもう一度選び直すと表示されます。</p>
+      <label class="filebtn">まとめ取得のファイルを選ぶ<input type="file" id="bulkFile" accept=".txt,text/plain"></label>
+      <div class="result" id="bulkResult"></div>
+    </div>
+    <div class="actions"><button class="btn ghost" id="impClose">閉じる</button></div>
+    <button class="smalllink" id="wipeAll" style="display:block">このiPhoneに残しているデータをすべて消す</button>
+  </div>
+</div>
+
+<!-- 書き出し -->
+<div class="overlay" id="exportOv">
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="expTitle">
+    <h2 id="expTitle">リストに保存</h2>
+    <div class="step">
+      <h3>1. 最新のリストを選ぶ</h3>
+      <p>アプリを開いたあとにショートカットで登録した本を消さないよう、今の「同人誌リスト.txt」をもう一度選んでください。</p>
+      <label class="filebtn">リストのファイルを選ぶ<input type="file" id="expFile" accept=".txt,text/plain"></label>
+      <div class="result" id="expResult"></div>
+      <button class="smalllink" id="quickExport" style="display:block">アプリを開いてからショートカットで登録していないので、このまま保存する</button>
+    </div>
+    <div class="step" id="expStep2" hidden>
+      <h3>2. コピーしてショートカットで上書き</h3>
+      <p>下のボタンでコピーしたら、ショートカット「リストを上書き」を実行してください。</p>
+      <button class="filebtn" id="copyBtn" style="width:100%;border:0">コピーする</button>
+      <textarea class="field" id="expText" readonly hidden></textarea>
+      <div class="result" id="copyResult"></div>
+    </div>
+    <div class="actions"><button class="btn ghost" id="expClose">閉じる</button></div>
+  </div>
+</div>
+
+
+<!-- 手動で追加 -->
+<div class="overlay" id="addOv">
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="addTitle">
+    <h2 id="addTitle">本を追加</h2>
+    <label for="a-circle">サークル名（必須）</label>
+    <input class="field" id="a-circle" list="dl-circle" autocomplete="off" placeholder="入力すると候補が出ます">
+    <label for="a-title">タイトル（必須）</label>
+    <input class="field" id="a-title" autocomplete="off">
+    <label for="a-author">作家名</label>
+    <input class="field" id="a-author" list="dl-tag" autocomplete="off">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div><label for="a-event">発行イベント</label><input class="field" id="a-event" list="dl-tag" autocomplete="off" placeholder="C107 など"></div>
+      <div><label for="a-genre">ジャンル</label><input class="field" id="a-genre" list="dl-tag" autocomplete="off"></div>
+    </div>
+    <label for="a-url">商品ページのURL</label>
+    <input class="field" id="a-url" type="url" autocomplete="off" style="font-size:14px">
+    <label for="a-memo">メモ</label>
+    <input class="field" id="a-memo" autocomplete="off" placeholder="「◯◯の再録」「総集編」など">
+    <label>表紙</label>
+    <div style="display:flex;gap:12px;align-items:center">
+      <img id="a-prev" alt="" style="width:64px;aspect-ratio:7/10;object-fit:cover;border-radius:6px;background:#E7E9F3;border:1px solid var(--line)">
+      <label class="filebtn alt" style="flex:1;margin:0">写真を撮る・選ぶ<input type="file" id="a-photo" accept="image/*"></label>
+    </div>
+    <p class="hint" style="font-size:12px;color:var(--sub);margin:6px 0 0">ここで付けた表紙はこのiPhoneのSafariに残ります。PC版でも見たい場合は、同じ画像を「同人誌表紙」フォルダに「【サークル名】タイトル.jpg」の名前で入れてください。</p>
+    <div class="warn" id="a-warn" style="display:none;background:#FFE5F0;color:#B3195E;border-radius:10px;padding:10px 12px;margin-top:12px;font-size:14px"></div>
+    <div class="actions">
+      <button class="btn ghost" id="a-cancel">閉じる</button>
+      <button class="btn primary" id="a-save">追加する</button>
+    </div>
+  </div>
+</div>
+<datalist id="dl-circle"></datalist><datalist id="dl-tag"></datalist>
+<div class="toast" id="toast"></div>
+
+<script>
+let items = [];      // {id,key,circle,title,tags,url,memo,gone,order}
+let covers = {};     // id -> dataURL（開いている間だけ）
+let view = 'list';
+let currentId = null;
+const deleted = new Set();   // 削除した本（リストを読み直しても復活させない）
+let dirty = 0;       // まだリストに保存していない変更の数
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const norm = s => (s||'').normalize('NFKC').toLowerCase().replace(/[\u30a1-\u30f6]/g, c => String.fromCharCode(c.charCodeAt(0)-96)).replace(/\s+/g,'');
+const keyNorm = s => (s||'').normalize('NFKC').toLowerCase().replace(/[\u30a1-\u30f6]/g, c => String.fromCharCode(c.charCodeAt(0)-96)).replace(/[\s・、。！？!?「」『』()（）\-~〜]/g,'');
+function hash(s){ let a = 0x811c9dc5; for (const ch of s){ a ^= ch.codePointAt(0); a = Math.imul(a, 16777619) >>> 0; } return a; }
+const INKS = ['#262A6B','#F0448F','#1C9A6C','#F2A900','#3B7BE0','#8A4FD8','#E8613C','#2BA9B8'];
+const inkFor = s => INKS[hash(norm(s)) % INKS.length];
+// 廃棄でも所持でも同じ本として扱うための共通キー
+const baseKey = k => k.replace(/^\[[kx]:/, '[k:');
+
+function toast(msg, ms=2400){ const t=$('toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove('show'), ms); }
+function markDirty(){ dirty++; updateSavebar(); persist(); }
+function updateSavebar(){ $('savebar').classList.toggle('show', dirty > 0); $('saveMsg').textContent = `保存していない変更が${dirty}件あります`; }
+window.addEventListener('beforeunload', e => { if (dirty) { e.preventDefault(); e.returnValue = ''; } });
+
+/* ---- このiPhoneのSafariにデータを残す ---- */
+function idb(){ return new Promise((res, rej) => { const r = indexedDB.open('doujin-web', 1);
+  r.onupgradeneeded = () => { r.result.createObjectStore('kv'); r.result.createObjectStore('covers'); };
+  r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); }
+async function dbGet(store, k){ try { const db = await idb(); return await new Promise(res => { const q = db.transaction(store).objectStore(store).get(k); q.onsuccess = () => res(q.result); q.onerror = () => res(undefined); }); } catch(e){ return undefined; } }
+async function dbPut(store, k, v){ try { const db = await idb(); return await new Promise(res => { const tx = db.transaction(store,'readwrite'); tx.objectStore(store).put(v, k); tx.oncomplete = () => res(true); tx.onerror = () => res(false); }); } catch(e){ return false; } }
+async function dbDel(store, k){ try { const db = await idb(); return await new Promise(res => { const tx = db.transaction(store,'readwrite'); tx.objectStore(store).delete(k); tx.oncomplete = () => res(true); tx.onerror = () => res(false); }); } catch(e){ return false; } }
+async function dbAll(store){ try { const db = await idb(); return await new Promise(res => { const out = {}; const q = db.transaction(store).objectStore(store).openCursor();
+  q.onsuccess = () => { const c = q.result; if (c) { out[c.key] = c.value; c.continue(); } else res(out); }; q.onerror = () => res(out); }); } catch(e){ return {}; } }
+async function dbClear(store){ try { const db = await idb(); return await new Promise(res => { const tx = db.transaction(store,'readwrite'); tx.objectStore(store).clear(); tx.oncomplete = () => res(true); tx.onerror = () => res(false); }); } catch(e){ return false; } }
+let persistTimer = null;
+function persist(){
+  clearTimeout(persistTimer);
+  persistTimer = setTimeout(() => dbPut('kv', 'state', { items, deleted: [...deleted], dirty }), 300);
+}
+
+/* ---- 行の読み書き ----
+   形式：【サークル】タイトル ／タグ ／タグ　URL　memo:メモ　[k:キー]
+   廃棄した本はキーが [x:…] になる（ショートカットの重複チェックに引っかからなくなる） */
+let repairedLines = 0;
+function parseLine(line){
+  line = line.trim();
+  const m = line.match(/^【(.*?)】(.*)$/); if (!m) return null;
+  let rest = m[2], memo = '', url = '', gone = false;
+  // キーは行末の「　[k:…]」。タイトルに[ ]が含まれていても壊れないよう、最初の「　[k:」以降をまとめて切り取る
+  const ki = rest.search(/[　\s]\[[kx]:/);
+  if (ki >= 0) {
+    const tail = rest.slice(ki).trim();
+    gone = tail.startsWith('[x:');
+    if ((tail.match(/\[[kx]:/g) || []).length > 1) repairedLines++;   // 以前の不具合で重なったキーを修復
+    rest = rest.slice(0, ki);
+  }
+  const mm = rest.match(/\s*memo:(.*)$/); if (mm) { memo = mm[1].trim(); rest = rest.slice(0, mm.index); }
+  const u = rest.match(/https?:\/\/\S+/); if (u) { url = u[0]; rest = rest.replace(u[0], ''); }
+  const parts = rest.replace(/[　\s]+$/,'').split(' ／').map(x => x.trim()).filter(Boolean);
+  const title = parts.shift() || ''; if (!title) return null;
+  const circle = m[1].trim();
+  const key = '[k:' + keyNorm(circle) + '/' + keyNorm(title) + ']';
+  return { key, gone, circle, title, tags: parts, url, memo };
+}
+function toLine(b){
+  const key = b.gone ? b.key.replace(/^\[k:/, '[x:') : b.key;
+  const memo = (b.memo || '').replace(/[\r\n]+/g, ' ').trim();
+  return '【' + b.circle + '】' + b.title + (b.tags||[]).map(t => ' ／' + t).join('') +
+    (b.url ? '　' + b.url : '') + (memo ? '　memo:' + memo : '') + '　' + key;
+}
+
+/* ---- 表示 ---- */
+function hl(text, terms){
+  let out = esc(text);
+  for (const t of terms) { const r = esc(t).replace(/[.*+?^${}()|[\]\\]/g,'\\$&'); if (r) out = out.replace(new RegExp(r,'gi'), m => `<mark>${m}</mark>`); }
+  return out;
+}
+function fillDatalists(){
+  const uniq = arr => [...new Set(arr.filter(Boolean))].sort((a,b) => a.localeCompare(b,'ja'));
+  $('dl-circle').innerHTML = uniq(items.map(b => b.circle)).map(x => `<option value="${esc(x)}">`).join('');
+  $('dl-tag').innerHTML = uniq(items.flatMap(b => b.tags||[])).map(x => `<option value="${esc(x)}">`).join('');
+}
+function render(){
+  fillDatalists();
+  $('total').textContent = items.filter(b => !b.gone).length;
+  const raw = $('q').value.trim().split(/[\s　]+/).filter(Boolean);
+  const terms = raw.map(norm).filter(Boolean);
+  const hit = items.filter(b => { const h = norm([b.circle,b.title,(b.tags||[]).join(' '),b.memo].join(' ')); return terms.every(t => h.includes(t)); });
+  const f = $('filter').value;
+  let list = hit.filter(b => f === 'all' || (f === 'gone' ? b.gone : !b.gone));
+  const s = $('sort').value;
+  if (s === 'new') list.sort((a,b) => b.order - a.order);
+  if (s === 'old') list.sort((a,b) => a.order - b.order);
+  if (s === 'circle') list.sort((a,b) => norm(a.circle).localeCompare(norm(b.circle),'ja') || a.order - b.order);
+
+  const v = $('verdict');
+  const own = hit.filter(b => !b.gone).length, past = hit.length - own;
+  if (terms.length && items.length) {
+    if (own) { v.className='verdict has'; v.innerHTML=`持ってます（${own}冊ヒット）<small>買う前に下で中身を確認してください</small>`; }
+    else if (past) { v.className='verdict past'; v.innerHTML=`以前持っていました（廃棄済み ${past}冊）<small>表示を「廃棄済み」か「すべて」にすると確認できます</small>`; }
+    else { v.className='verdict none'; v.innerHTML='見つかりません<small>まだ持っていない本です</small>'; }
+  } else { v.className='verdict'; v.innerHTML=''; }
+
+  const box = $('list'); box.className = view;
+  box.innerHTML = list.map(b => {
+    const cv = covers[b.id];
+    const img = cv ? `<img class="cv" src="${cv}" alt="" loading="lazy">` : `<div class="nocv" style="background:${inkFor(b.circle)}">${esc((b.circle||'?').slice(0,1))}</div>`;
+    return `<div class="book${b.gone ? ' gone' : ''}" data-id="${b.id}" tabindex="0" role="button">${img}<div class="body">
+      <div class="circle">${hl(b.circle, raw)}</div><div class="title">${hl(b.title, raw)}</div>
+      <div class="tags">${b.gone ? '<span class="gonetag">廃棄</span>' : ''}${(b.tags||[]).map(t => `<span class="tag">${hl(t, raw)}</span>`).join('')}</div>
+      ${b.memo ? `<div class="memo">${hl(b.memo, raw)}</div>` : ''}</div></div>`;
+  }).join('');
+
+  $('empty').innerHTML = items.length ? (list.length ? '' : '該当する本はありません') :
+    '<strong>リストを取り込んでください</strong>ショートカットで作った「同人誌リスト.txt」と表紙を選ぶと、ここに並びます。<br><button class="importbtn" onclick="openImport()">取り込む</button>';
+}
+
+/* ---- リストの取り込み（新しい本の追加・ファイル側の変更の反映） ---- */
+async function readList(file){
+  const text = await file.text();
+  const known = new Map(items.map(b => [b.key, b]));
+  let maxOrder = items.reduce((a,b) => Math.max(a, b.order||0), 0), added = 0;
+  for (const line of text.split(/\r?\n/)) {
+    const p = parseLine(line); if (!p || deleted.has(p.key)) continue;
+    const ex = known.get(p.key);
+    if (ex) {
+      // アプリ側で未保存の変更がある本はアプリ側を優先
+      if (!ex.edited) Object.assign(ex, { tags: p.tags.length ? p.tags : ex.tags, url: p.url || ex.url, memo: p.memo, gone: p.gone });
+      continue;
+    }
+    const item = { id: hash(p.key).toString(36), ...p, order: ++maxOrder };
+    items.push(item); known.set(p.key, item); added++;
+  }
+  if (repairedLines) { toast(`崩れていた行を${repairedLines}件直しました。「リストに保存」で書き込んでください`, 4000); repairedLines = 0; markDirty(); }
+  render(); persist();
+  return added;
+}
+$('txtFile').addEventListener('change', async e => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  const added = await readList(f);
+  $('txtResult').textContent = `${added}冊を読み込みました`;
+});
+
+/* ---- 表紙（開いている間だけ表示） ---- */
+const fileNameOf = b => ('【'+b.circle+'】'+b.title).replace(/[\/\\:*?"<>|]/g,'_').slice(0,80);
+const nameKey = s => keyNorm(s.normalize('NFC').replace(/(\.(jpe?g|png|webp|heic|gif))+$/i,'').replace(/ \d+$/,'').replace(/_/g,''));
+// ファイルの先頭を見て本当の形式を判定（拡張子が.jpgでも中身が違うことがあるため）
+async function sniff(file){
+  const u = new Uint8Array(await file.slice(0, 32).arrayBuffer());
+  const str = String.fromCharCode(...u);
+  if (u[0] === 0xFF && u[1] === 0xD8) return 'image/jpeg';
+  if (u[0] === 0x89 && str.slice(1,4) === 'PNG') return 'image/png';
+  if (str.startsWith('GIF8')) return 'image/gif';
+  if (str.startsWith('RIFF') && str.slice(8,12) === 'WEBP') return 'image/webp';
+  if (str.slice(4,8) === 'ftyp') return /avif|avis/.test(str.slice(8,12)) ? 'image/avif' : 'image/heic';
+  if (/^\s*</.test(str)) return 'html';
+  return '';
+}
+// この環境ではblob:のURLで画像を開けないため、URLを使わない方法で読み込む
+function readAsDataURL(blob){
+  return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(blob); });
+}
+async function loadImage(blob){
+  if (window.createImageBitmap) { try { return await createImageBitmap(blob); } catch(e){} }
+  const url = await readAsDataURL(blob);
+  return await new Promise((res, rej) => { const img = new Image(); img.onload = () => res(img); img.onerror = () => rej(new Error('decode')); img.src = url; });
+}
+async function resize(file, max=240){
+  const type = await sniff(file);
+  if (type === 'html') throw new Error('画像ではなくWebページの内容が保存されています');
+  if (file.size < 200) throw new Error('ファイルが空です');
+  let img;
+  try { img = await loadImage(new Blob([file], { type: type || file.type || 'image/jpeg' })); }
+  catch(e){ throw new Error(type ? `${type.replace('image/','')}形式を開けません` : '画像として開けません'); }
+  const s = Math.min(1, max / Math.max(img.width, img.height));
+  const c = document.createElement('canvas');
+  c.width = Math.round(img.width*s); c.height = Math.round(img.height*s);
+  c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+  return c.toDataURL('image/jpeg', 0.72);
+}
+$('imgFiles').addEventListener('change', async e => {
+  const files = [...e.target.files]; e.target.value = ''; if (!files.length) return;
+  const entries = items.map(b => [nameKey(fileNameOf(b)), b]);
+  const byName = new Map(entries);
+  const byId = new Map(items.filter(b => idFromUrl(b.url)).map(b => [idFromUrl(b.url).toLowerCase(), b]));
+  const find = n => byName.get(n) || (n.length >= 4 ? (entries.find(([k]) => k.startsWith(n) || n.startsWith(k)) || [])[1] : null);
+  const findFile = name => { const m = name.normalize('NFC').replace(/\s+/g,'').match(/^id_(\w+?)(\.\w+)*$/i); return (m && byId.get(m[1].toLowerCase())) || find(nameKey(name)); };
+  let ok = 0; const missed = []; const out = $('imgResult');
+  for (let i = 0; i < files.length; i++) {
+    out.textContent = `読み込み中… ${i+1} / ${files.length}`;
+    const b = findFile(files[i].name);
+    if (!b) { missed.push(files[i].name); continue; }
+    try { covers[b.id] = await resize(files[i]); await dbPut('covers', b.id, covers[b.id]); ok++; } catch(err){ missed.push(files[i].name + '（' + (err.message || '画像を開けません') + '）'); }
+  }
+  render();
+  out.innerHTML = `${ok}冊の表紙を読み込みました` + (missed.length
+    ? `<div style="color:#B3195E;font-weight:400;margin-top:6px">読み込めなかった画像：${missed.length}枚<br>${missed.slice(0,5).map(esc).join('<br>')}${missed.length>5?'<br>…':''}</div>` : '');
+});
+
+/* ---- 詳細・メモ・廃棄 ---- */
+function openDetail(id){
+  const b = items.find(x => x.id === id); if (!b) return;
+  currentId = id;
+  const cv = covers[id];
+  $('dCover').style.display = cv ? '' : 'none'; if (cv) $('dCover').src = cv;
+  $('dCircle').textContent = b.circle; $('dTitle').textContent = b.title;
+  $('dTags').innerHTML = b.gone ? '<span class="gonetag">廃棄</span>' : '';
+  $('dTagIn').value = ''; renderTagEdit(b);
+  $('dLink').style.display = b.url ? '' : 'none'; $('dLink').href = b.url || '#';
+  $('dMemo').value = b.memo || '';
+  $('dName').hidden = true;
+  $('dGone').textContent = b.gone ? '所持に戻す' : '廃棄にする';
+  $('detailOv').classList.add('open');
+}
+function commitMemo(){
+  const b = items.find(x => x.id === currentId); if (!b) return;
+  const m = $('dMemo').value.trim();
+  if (m !== (b.memo || '')) { b.memo = m; b.edited = true; markDirty(); }
+}
+$('dSave').onclick = () => { commitMemo(); $('detailOv').classList.remove('open'); render(); };
+$('dGone').onclick = () => {
+  const b = items.find(x => x.id === currentId); if (!b) return;
+  commitMemo();
+  b.gone = !b.gone; b.edited = true; markDirty();
+  $('detailOv').classList.remove('open'); render();
+  toast(b.gone ? '廃棄にしました' : '所持に戻しました');
+};
+$('list').addEventListener('click', e => { const el = e.target.closest('.book'); if (el) openDetail(el.dataset.id); });
+$('list').addEventListener('keydown', e => { if (e.key === 'Enter') { const el = e.target.closest('.book'); if (el) openDetail(el.dataset.id); } });
+
+/* ---- リストに保存（書き出し） ---- */
+$('openExport').onclick = () => {
+  $('expResult').textContent = ''; $('copyResult').textContent = ''; $('expStep2').hidden = true; $('expText').hidden = true;
+  $('exportOv').classList.add('open');
+};
+$('expFile').addEventListener('change', async e => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  const added = await readList(f);
+  $('expText').value = items.slice().sort((a,b) => a.order - b.order).map(toLine).join('\n') + '\n';
+  $('expResult').textContent = added ? `新しく登録された${added}冊も含めました` : '準備できました';
+  $('expStep2').hidden = false;
+});
+
+$('quickExport').onclick = () => {
+  $('expText').value = items.slice().sort((a,b) => a.order - b.order).map(toLine).join('\n') + '\n';
+  $('expResult').textContent = '準備できました';
+  $('expStep2').hidden = false;
+};
+$('copyBtn').onclick = async () => {
+  const text = $('expText').value;
+  try { await navigator.clipboard.writeText(text); }
+  catch(err) {
+    $('expText').hidden = false; $('expText').focus(); $('expText').select();
+    $('copyResult').textContent = '自動でコピーできませんでした。上の枠を長押し→「すべてを選択」→「コピー」してください';
+    return;
+  }
+  $('copyResult').textContent = 'コピーしました。ショートカット「リストを上書き」を実行してください';
+  dirty = 0; items.forEach(b => delete b.edited); updateSavebar(); persist();
+};
+$('expClose').onclick = () => $('exportOv').classList.remove('open');
+
+
+/* ---- 手動で追加 ---- */
+let addPhoto = null, addConfirm = false;
+const AF = ['circle','title','author','event','genre','url','memo'];
+function openAdd(){
+  AF.forEach(k => $('a-'+k).value = '');
+  addPhoto = null; addConfirm = false;
+  $('a-prev').removeAttribute('src'); $('a-warn').style.display = 'none'; $('a-save').textContent = '追加する';
+  $('addOv').classList.add('open');
+}
+$('openAdd').onclick = openAdd;
+$('a-cancel').onclick = () => $('addOv').classList.remove('open');
+['a-circle','a-title'].forEach(id => $(id).addEventListener('input', () => { addConfirm = false; $('a-warn').style.display = 'none'; $('a-save').textContent = '追加する'; }));
+$('a-photo').addEventListener('change', async e => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  try { addPhoto = await resize(f); $('a-prev').src = addPhoto; } catch(err){ toast('画像を読み込めませんでした：' + (err.message || '')); }
+});
+$('a-save').onclick = () => {
+  const v = {}; AF.forEach(k => v[k] = $('a-'+k).value.trim().replace(/[\r\n]+/g,' '));
+  if (!v.circle || !v.title) { toast('サークル名とタイトルを入力してください'); return; }
+  if (v.circle.includes('】')) { toast('サークル名に「】」は使えません'); return; }
+  const key = '[k:' + keyNorm(v.circle) + '/' + keyNorm(v.title) + ']';
+  const ex = items.find(b => b.key === key);
+  if (ex && !ex.gone && !addConfirm) {
+    $('a-warn').innerHTML = `この本はすでに持っています：<b>${esc(ex.circle)}『${esc(ex.title)}』</b>`;
+    $('a-warn').style.display = 'block'; return;
+  }
+  if (ex && ex.gone && !addConfirm) {
+    $('a-warn').innerHTML = `廃棄済みとして登録されている本です。もう一度押すと「所持」に戻します。`;
+    $('a-warn').style.display = 'block'; $('a-save').textContent = '所持に戻す'; addConfirm = true; return;
+  }
+  let item;
+  if (ex) { item = ex; item.gone = false; if (v.memo) item.memo = v.memo; }
+  else {
+    deleted.delete(key);
+    item = { id: hash(key).toString(36), key, gone: false, circle: v.circle, title: v.title,
+      tags: [v.author, v.event, v.genre].filter(Boolean), url: v.url, memo: v.memo,
+      order: items.reduce((a,b) => Math.max(a, b.order||0), 0) + 1 };
+    items.push(item);
+  }
+  item.edited = true;
+  if (addPhoto) { covers[item.id] = addPhoto; dbPut('covers', item.id, addPhoto); }
+  markDirty(); render();
+  $('addOv').classList.remove('open');
+  toast(ex ? '所持に戻しました' : '追加しました');
+};
+
+
+
+/* ---- まとめて取得したページから本を追加 ---- */
+const idFromUrl = u => ((u||'').match(/(?:product_id=|cid=)(\w+)/) || [])[1] || '';
+function extractFromHtml(html, url){
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  const t = e => e ? e.textContent.replace(/\s+/g,' ').trim() : '';
+  const cl = x => x.replace(/\s*[(（]作品数[^)）]*[)）]/g,'').replace(/^(サークル名?|作家名?)\s*[：:]\s*/,'').trim();
+  const fa = v => [...v.querySelectorAll('a')].find(x => t(x));
+  const d = {};
+  doc.querySelectorAll('th,dt').forEach(el => { const v = el.nextElementSibling; if (v) d[t(el)] = cl(t(fa(v) || v)); });
+  const g = (...keys) => { for (const k in d) if (keys.some(x => k.includes(x))) return d[k]; return ''; };
+  const lab = re => { const e = [...doc.querySelectorAll('th,td,dt,dd,span,div,p,li,label')].find(e => !e.children.length && re.test(t(e)));
+    if (!e) return ''; const v = e.nextElementSibling || (e.parentElement && e.parentElement.nextElementSibling); return v ? cl(t(fa(v) || v)) : ''; };
+  const clink = () => { const a = [...doc.querySelectorAll('a[href*="circle"]')].find(x => { const s = t(x); return s && !/サークル|一覧|すべて|もっと/.test(s); }); return a ? cl(t(a)) : ''; };
+  const meta = p => { const m = doc.querySelector(`meta[property="${p}"]`); return m ? m.content : ''; };
+  const rawTitle = t(doc.querySelector('title'));
+  const docTitle = rawTitle.replace(/\s*(の通販|通販|[|｜]| - ).*$/, '');
+  const h1 = t(doc.querySelector('h1'));
+  // メロンブックスなどは<title>が「タイトル 通販 - ショップ名」の形なのでそれを優先
+  const title = (/通販/.test(rawTitle) && docTitle) || (h1 && !/メロンブックス|とらのあな|FANZA|DMM/.test(h1) ? h1 : '') || meta('og:title').replace(/\s*[|｜].*$/,'') || docTitle;
+  const body = doc.body ? doc.body.textContent : '';
+  const fromText = re => { const m = body.match(re); return m ? cl(m[1].replace(/\s+/g,' ').trim()) : ''; };
+  const circle = g('サークル') || lab(/^サークル名?[：:]?$/) || fromText(/サークル名\s+([^\n\t]+)/) || clink();
+  const author = g('作家','著者') || lab(/^(作家|著者)名?[：:]?$/);
+  return { circle, title, tags: [author, g('イベント'), g('ジャンル')].filter(Boolean), url, pageTitle: rawTitle };
+}
+$('bulkFile').addEventListener('change', async e => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  const out = $('bulkResult'); out.textContent = '読み込み中…';
+  const text = await f.text();
+  const blocks = text.split('@@@URL ').slice(1);
+  let added = 0; const dup = [], failed = [];
+  let maxOrder = items.reduce((a,b) => Math.max(a, b.order||0), 0);
+  for (const blk of blocks) {
+    const nl = blk.indexOf('\n');
+    const url = blk.slice(0, nl).trim(), html = blk.slice(nl + 1);
+    let p;
+    try { p = extractFromHtml(html, url); } catch(err){ failed.push(url); continue; }
+    if (!p.circle || !p.title) {
+      const why = [!p.circle && 'サークル名', !p.title && 'タイトル'].filter(Boolean).join('と') + 'が見つかりません';
+      failed.push(`${url}（${why}／ページ名：${(p.pageTitle || 'なし').slice(0,40)}）`); continue;
+    }
+    const key = '[k:' + keyNorm(p.circle) + '/' + keyNorm(p.title) + ']';
+    const ex = items.find(b => b.key === key);
+    if (ex) { dup.push(p.title); continue; }
+    deleted.delete(key);
+    items.push({ id: hash(key).toString(36), key, gone: false, circle: p.circle, title: p.title, tags: p.tags, url: p.url, memo: '', order: ++maxOrder, edited: true });
+    added++;
+  }
+  if (added) markDirty();
+  render();
+  out.innerHTML = `${added}冊を追加しました` +
+    (dup.length ? `<div style="color:var(--sub);font-weight:400;margin-top:4px">すでに持っている本：${dup.length}冊（${dup.slice(0,3).map(esc).join('、')}${dup.length>3?' など':''}）</div>` : '') +
+    (failed.length ? `<div style="color:#B3195E;font-weight:400;margin-top:4px">情報を読み取れなかったページ：${failed.length}件<br>${failed.slice(0,5).map(esc).join('<br>')}</div>` : '') +
+    (added ? '<div style="font-weight:400;margin-top:4px">忘れずに「リストに保存」してください</div>' : '');
+});
+
+
+/* ---- タグの編集 ---- */
+function renderTagEdit(b){
+  $('dTagEdit').innerHTML = (b.tags||[]).length
+    ? b.tags.map((t,i) => `<span class="chip">${esc(t)}<button type="button" data-i="${i}" aria-label="${esc(t)}を外す">×</button></span>`).join('')
+    : '<span style="font-size:13px;color:var(--sub)">まだタグはありません</span>';
+}
+// リストの書式を壊さないよう、区切りに使う記号や改行は置き換える
+const cleanTag = v => v.replace(/[\r\n\t]+/g,' ').replace(/／/g,'/').replace(/　/g,' ').replace(/\s+/g,' ').replace(/^memo:/i,'').trim();
+function addTag(){
+  const b = items.find(x => x.id === currentId); if (!b) return;
+  const v = cleanTag($('dTagIn').value);
+  if (!v) return;
+  if (/^https?:/.test(v)) { toast('URLはタグにできません'); return; }
+  b.tags = b.tags || [];
+  if (b.tags.some(t => norm(t) === norm(v))) { toast('そのタグはもう付いています'); $('dTagIn').value = ''; return; }
+  b.tags.push(v); b.edited = true; markDirty();
+  $('dTagIn').value = ''; renderTagEdit(b); render();
+}
+$('dTagAdd').onclick = addTag;
+$('dTagIn').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); addTag(); } });
+$('dTagEdit').addEventListener('click', e => {
+  const btn = e.target.closest('button[data-i]'); if (!btn) return;
+  const b = items.find(x => x.id === currentId); if (!b) return;
+  b.tags.splice(Number(btn.dataset.i), 1); b.edited = true; markDirty();
+  renderTagEdit(b); render();
+});
+
+/* ---- 表紙のファイル名をコピー ---- */
+$('dCopyName').onclick = async () => {
+  const b = items.find(x => x.id === currentId); if (!b) return;
+  const name = fileNameOf(b) + '.jpg';
+  try { await navigator.clipboard.writeText(name); toast('コピーしました：' + name, 3000); }
+  catch(err) {
+    // コピーできない環境では、選択した状態で表示して手動でコピーしてもらう
+    const el = $('dName'); el.value = name; el.hidden = false; el.focus(); el.select(); el.setSelectionRange(0, name.length);
+    toast('自動でコピーできませんでした。下の欄を長押しして「コピー」してください', 3500);
+  }
+};
+
+/* ---- 削除 ---- */
+$('dDel').onclick = () => {
+  const b = items.find(x => x.id === currentId); if (!b) return;
+  if (!confirm(`『${b.title}』をリストから削除しますか？\n（手放した本は「廃棄にする」を使うと記録を残せます）`)) return;
+  items = items.filter(x => x.id !== currentId); deleted.add(b.key); delete covers[b.id]; dbDel('covers', b.id);
+  markDirty(); $('detailOv').classList.remove('open'); render(); toast('削除しました');
+};
+
+/* ---- その他 ---- */
+function openImport(){ $('txtResult').textContent=''; $('imgResult').textContent=''; $('importOv').classList.add('open'); }
+$('openImport').onclick = openImport;
+$('impClose').onclick = () => $('importOv').classList.remove('open');
+function setView(v){ view = v; $('vList').setAttribute('aria-pressed', v==='list'); $('vGrid').setAttribute('aria-pressed', v==='grid'); render(); }
+$('vList').onclick = () => setView('list');
+$('vGrid').onclick = () => setView('grid');
+document.querySelectorAll('.overlay').forEach(ov => ov.addEventListener('click', e => { if (e.target === ov) ov.classList.remove('open'); }));
+document.addEventListener('keydown', e => { if (e.key === 'Escape') document.querySelectorAll('.overlay.open').forEach(o => o.classList.remove('open')); });
+['q'].forEach(id => $(id).addEventListener('input', render));
+['sort','filter'].forEach(id => $(id).addEventListener('change', render));
+/* ---- 起動 ---- */
+$('wipeAll').onclick = async () => {
+  if (!confirm('このiPhoneのSafariに残している本・表紙・未保存の変更をすべて消します。\n（iCloudなどのリストのファイルは消えません）よろしいですか？')) return;
+  await dbClear('kv'); await dbClear('covers');
+  items = []; covers = {}; deleted.clear(); dirty = 0; updateSavebar(); render();
+  $('importOv').classList.remove('open'); toast('消去しました');
+};
+(async () => {
+  const st = await dbGet('kv', 'state');
+  if (st && st.items) { items = st.items; (st.deleted || []).forEach(k => deleted.add(k)); dirty = st.dirty || 0; }
+  render(); updateSavebar();
+  covers = await dbAll('covers');
+  render();
+  // 長く使わなくてもデータが消されにくいようにお願いする
+  if (navigator.storage && navigator.storage.persist) { try { await navigator.storage.persist(); } catch(e){} }
+})();
+</script>
+</body>
+</html>
