@@ -902,7 +902,7 @@ $('bUrls').onclick = async () => {
   const urls = selItems().map(b => b.url).filter(u => /^https?:/.test(u || ''));
   if (!urls.length) { toast('選んだ本には商品ページのURLがありません'); return; }
   if (urls.length > 50 && !confirm(`${urls.length}件あります。一度に多いと時間がかかったり途中で止まったりするので、50件くらいずつがおすすめです。このままコピーしますか？`)) return;
-  try { await navigator.clipboard.writeText(urls.join('\n')); toast(`${urls.length}件のURLをコピーしました。ショートカット「タグ取得」を実行してください`, 3500); }
+  try { await navigator.clipboard.writeText('タグ取得用のURL一覧\n' + urls.join('\n')); toast(`${urls.length}件のURLをコピーしました。ショートカット「タグ取得」を実行してください`, 3500); }
   catch(err){ prompt('自動でコピーできませんでした。下の文字をすべてコピーしてください', urls.join(' ')); }
 };
 
