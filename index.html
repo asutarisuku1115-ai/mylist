@@ -221,6 +221,13 @@
       <label class="filebtn">まとめ取得のファイルを選ぶ<input type="file" id="bulkFile" accept=".txt,text/plain"></label>
       <div class="result" id="bulkResult"></div>
     </div>
+    <div class="step">
+      <h3>4. 商品ページのタグを取り込む</h3>
+      <p>ショートカット「タグ取得」で作られた「タグ取得.txt」を選びます。作家名・イベント・ジャンルと、ページのハッシュタグ（特集やキャンペーン用のものは除く）を付けます。</p>
+      <div class="radios" style="margin:0 0 10px"><label><input type="checkbox" id="tagHash" checked> ハッシュタグも付ける</label></div>
+      <label class="filebtn">タグ取得のファイルを選ぶ<input type="file" id="tagFile" accept=".txt,text/plain"></label>
+      <div class="result" id="tagResult"></div>
+    </div>
     <div class="actions"><button class="btn ghost" id="impClose">閉じる</button></div>
     <button class="smalllink" id="wipeAll" style="display:block">このiPhoneに残しているデータをすべて消す</button>
   </div>
@@ -290,6 +297,7 @@
   <button class="hot" id="bMemo">メモ</button>
   <button id="bGone">廃棄にする</button>
   <button id="bOwn">所持に戻す</button>
+  <button id="bUrls">URLをコピー（タグ取得用）</button>
   <button id="selDone">完了</button>
 </div></div>
 
@@ -837,6 +845,56 @@ $('bGone').onclick = () => {
   applyAll(b => { if (b.gone) return false; b.gone = true; return true; }, '廃棄にしました');
 };
 $('bOwn').onclick = () => applyAll(b => { if (!b.gone) return false; b.gone = false; return true; }, '所持に戻しました');
+
+
+/* ---- 商品ページからタグを取り込む ---- */
+const NOISE = /特集|フェア|キャンペーン|fair|ranking|point|pickup|再販|セール|倍|FP|プレゼント|当選|会場|直送|まとめ|orifesu|resale|作品一覧|対象|応援|祭|ランキング|_|【|】|^\d|\d{4}/i;
+function tagsFromText(text, withHash){
+  const lines = text.split(/\r?\n/);
+  const field = label => { const m = text.match(new RegExp('^\\s*' + label + '\\s*\\t\\s*(.+)$', 'm')); return m ? m[1].trim() : ''; };
+  const out = [];
+  const author = field('作家名'); if (author) out.push(...author.split(/\s*[,、]\s*/));
+  const event = field('イベント'); if (event) out.push(event);
+  const genre = field('ジャンル'); if (genre) out.push(...genre.split(/\s*[,、]\s*/));
+  if (withHash) {
+    // 「#〇〇 #〇〇 …」が一番たくさん並んでいる行を、その商品のタグとみなす
+    let best = '', bestN = 1;
+    lines.forEach(l => { const n = (l.match(/#[^\s#]+/g) || []).length; if (n > bestN) { best = l; bestN = n; } });
+    const hs = (best.match(/#[^\s#]+/g) || []).map(h => h.slice(1)).filter(h => !NOISE.test(h));
+    out.push(...hs.slice(0, 15));
+  }
+  return [...new Map(out.map(cleanTag).filter(Boolean).map(t => [norm(t), t])).values()];
+}
+$('tagFile').addEventListener('change', async e => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  const out = $('tagResult'); out.textContent = '読み込み中…';
+  const text = await f.text();
+  const withHash = $('tagHash').checked;
+  const byId = new Map(items.filter(b => idFromUrl(b.url)).map(b => [idFromUrl(b.url), b]));
+  let updated = 0, added = 0; const notFound = [];
+  for (const blk of text.split('@@@URL ').slice(1)) {
+    const nl = blk.indexOf('\n'); const url = blk.slice(0, nl).trim(), body = blk.slice(nl + 1);
+    const b = byId.get(idFromUrl(url));
+    if (!b) { notFound.push(url); continue; }
+    const tags = tagsFromText(body, withHash);
+    b.tags = b.tags || [];
+    const before = b.tags.length;
+    tags.forEach(t => { if (!b.tags.some(x => norm(x) === norm(t))) b.tags.push(t); });
+    if (b.tags.length > before) { b.edited = true; updated++; added += b.tags.length - before; }
+  }
+  if (updated) { dirty += updated - 1; markDirty(); }
+  render();
+  out.innerHTML = `${updated}冊に合計${added}個のタグを付けました` +
+    (notFound.length ? `<div style="color:#B3195E;font-weight:400;margin-top:4px">リストにない本のページ：${notFound.length}件</div>` : '') +
+    (updated ? '<div style="font-weight:400;margin-top:4px">要らないタグは「選択」→「タグを外す」でまとめて外せます。最後に「リストに保存」を忘れずに</div>' : '');
+});
+$('bUrls').onclick = async () => {
+  const urls = selItems().map(b => b.url).filter(u => /^https?:/.test(u || ''));
+  if (!urls.length) { toast('選んだ本には商品ページのURLがありません'); return; }
+  if (urls.length > 50 && !confirm(`${urls.length}件あります。一度に多いと時間がかかったり途中で止まったりするので、50件くらいずつがおすすめです。このままコピーしますか？`)) return;
+  try { await navigator.clipboard.writeText(urls.join('\n')); toast(`${urls.length}件のURLをコピーしました。ショートカット「タグ取得」を実行してください`, 3500); }
+  catch(err){ prompt('自動でコピーできませんでした。下の文字をすべてコピーしてください', urls.join(' ')); }
+};
 
 /* ---- 起動 ---- */
 $('wipeAll').onclick = async () => {
