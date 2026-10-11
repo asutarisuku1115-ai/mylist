@@ -107,6 +107,21 @@
   .tagrow button{flex:none;border:0;border-radius:10px;background:var(--ink);color:#fff;font-weight:800;padding:0 16px;cursor:pointer}
   body{overscroll-behavior-y:none}
   .overlay .sheet{overscroll-behavior:contain}
+  .book.sel{outline:3px solid var(--pink);outline-offset:-3px;position:relative}
+  .book.sel::after{content:"✓";position:absolute;top:6px;right:6px;width:24px;height:24px;border-radius:50%;background:var(--pink);color:#fff;font-weight:800;font-size:14px;display:flex;align-items:center;justify-content:center}
+  .list .book{position:relative}
+  .selbar{position:fixed;left:0;right:0;bottom:0;z-index:8;background:var(--ink);color:#fff;padding:10px 12px calc(10px + env(safe-area-inset-bottom));display:none}
+  .selbar.show{display:block}
+  .selbar .row{display:flex;gap:6px;flex-wrap:wrap;align-items:center;max-width:720px;margin:0 auto}
+  .selbar .cnt{flex:1 1 100%;font-size:14px;font-weight:700;margin-bottom:2px}
+  .selbar button{border:0;border-radius:8px;background:rgba(255,255,255,.14);color:#fff;font-weight:700;padding:8px 10px;font-size:13px;cursor:pointer}
+  .selbar button.hot{background:var(--pink)}
+  .selbar button:disabled{opacity:.4}
+  body.selecting .savebar{display:none!important}
+  body.selecting .wrap{padding-bottom:150px}
+  .editbox{background:var(--white);border:1px solid var(--line);border-radius:12px;padding:4px 12px 12px;margin-top:12px}
+  .radios{display:flex;gap:14px;flex-wrap:wrap;font-size:14px;margin-top:8px}
+  .radios label{display:flex;gap:6px;align-items:center;margin:0;color:var(--ink);font-size:14px}
 </style>
 </head>
 <body>
@@ -133,6 +148,7 @@
       <button id="vGrid" aria-pressed="false">表紙</button>
     </div>
     <div class="spacer"></div>
+    <button class="importbtn" id="selToggle">選択</button>
     <button class="importbtn" id="openAdd">＋追加</button>
     <button class="importbtn" id="openImport">取り込み</button>
   </div>
@@ -151,6 +167,18 @@
         <div class="title" id="dTitle"></div>
         <div class="tags" id="dTags"></div>
         <a class="link" id="dLink" target="_blank" rel="noopener">メロンブックスで開く</a>
+      </div>
+    </div>
+    <button class="smalllink" id="dEditOpen" style="display:block">サークル名・タイトルを修正する</button>
+    <div class="editbox" id="dEditBox" hidden>
+      <label for="eCircle">サークル名</label>
+      <input class="field" id="eCircle" list="dl-circle" autocomplete="off">
+      <label for="eTitle">タイトル</label>
+      <input class="field" id="eTitle" autocomplete="off">
+      <p class="hint" style="font-size:12px;color:var(--sub);margin:8px 0 0">直しても重複チェックは元の情報のまま働きます。表紙ファイルの名前は変わらないので、このアプリの表紙はそのまま残ります。</p>
+      <div class="actions" style="margin-top:10px">
+        <button class="btn ghost" id="eCancel">やめる</button>
+        <button class="btn primary" id="eApply">修正する</button>
       </div>
     </div>
     <button class="filebtn alt" id="dCopyName" style="width:100%;margin-top:14px">表紙のファイル名をコピー</button>
@@ -253,6 +281,28 @@
   </div>
 </div>
 <datalist id="dl-circle"></datalist><datalist id="dl-tag"></datalist>
+<div class="selbar" id="selbar"><div class="row">
+  <div class="cnt" id="selCnt">0冊を選択中</div>
+  <button id="selAll">表示中をすべて選択</button>
+  <button id="selNone">選択を解除</button>
+  <button class="hot" id="bTagAdd">タグを付ける</button>
+  <button class="hot" id="bTagDel">タグを外す</button>
+  <button class="hot" id="bMemo">メモ</button>
+  <button id="bGone">廃棄にする</button>
+  <button id="bOwn">所持に戻す</button>
+  <button id="selDone">完了</button>
+</div></div>
+
+<div class="overlay" id="bulkOv">
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="bulkTitle">
+    <h2 id="bulkTitle"></h2>
+    <div id="bulkBody"></div>
+    <div class="actions">
+      <button class="btn ghost" id="bulkCancel">閉じる</button>
+      <button class="btn primary" id="bulkApply">反映する</button>
+    </div>
+  </div>
+</div>
 <div class="toast" id="toast"></div>
 
 <script>
@@ -301,12 +351,14 @@ let repairedLines = 0;
 function parseLine(line){
   line = line.trim();
   const m = line.match(/^【(.*?)】(.*)$/); if (!m) return null;
-  let rest = m[2], memo = '', url = '', gone = false;
+  let rest = m[2], memo = '', url = '', gone = false, storedKey = '';
   // キーは行末の「　[k:…]」。タイトルに[ ]が含まれていても壊れないよう、最初の「　[k:」以降をまとめて切り取る
   const ki = rest.search(/[　\s]\[[kx]:/);
   if (ki >= 0) {
     const tail = rest.slice(ki).trim();
     gone = tail.startsWith('[x:');
+    const tok = tail.split(/[　\s]+/)[0];          // キーには空白が含まれないので、最初の区切りまでがキー
+    if (/^\[[kx]:.*\]$/.test(tok)) storedKey = '[k:' + tok.slice(3);
     if ((tail.match(/\[[kx]:/g) || []).length > 1) repairedLines++;   // 以前の不具合で重なったキーを修復
     rest = rest.slice(0, ki);
   }
@@ -315,7 +367,7 @@ function parseLine(line){
   const parts = rest.replace(/[　\s]+$/,'').split(' ／').map(x => x.trim()).filter(Boolean);
   const title = parts.shift() || ''; if (!title) return null;
   const circle = m[1].trim();
-  const key = '[k:' + keyNorm(circle) + '/' + keyNorm(title) + ']';
+  const key = storedKey || ('[k:' + keyNorm(circle) + '/' + keyNorm(title) + ']');
   return { key, gone, circle, title, tags: parts, url, memo };
 }
 function toLine(b){
@@ -357,11 +409,12 @@ function render(){
     else { v.className='verdict none'; v.innerHTML='見つかりません<small>まだ持っていない本です</small>'; }
   } else { v.className='verdict'; v.innerHTML=''; }
 
+  lastList = list.map(b => b.id);
   const box = $('list'); box.className = view;
   box.innerHTML = list.map(b => {
     const cv = covers[b.id];
     const img = cv ? `<img class="cv" src="${cv}" alt="" loading="lazy">` : `<div class="nocv" style="background:${inkFor(b.circle)}">${esc((b.circle||'?').slice(0,1))}</div>`;
-    return `<div class="book${b.gone ? ' gone' : ''}" data-id="${b.id}" tabindex="0" role="button">${img}<div class="body">
+    return `<div class="book${b.gone ? ' gone' : ''}${selected.has(b.id) ? ' sel' : ''}" data-id="${b.id}" tabindex="0" role="button">${img}<div class="body">
       <div class="circle">${hl(b.circle, raw)}</div><div class="title">${hl(b.title, raw)}</div>
       <div class="tags">${b.gone ? '<span class="gonetag">廃棄</span>' : ''}${(b.tags||[]).map(t => `<span class="tag">${hl(t, raw)}</span>`).join('')}</div>
       ${b.memo ? `<div class="memo">${hl(b.memo, raw)}</div>` : ''}</div></div>`;
@@ -464,6 +517,7 @@ function openDetail(id){
   $('dTagIn').value = ''; renderTagEdit(b);
   $('dLink').style.display = b.url ? '' : 'none'; $('dLink').href = b.url || '#';
   $('dMemo').value = b.memo || '';
+  $('dEditBox').hidden = true; $('dEditOpen').hidden = false;
   $('dName').hidden = true;
   $('dGone').textContent = b.gone ? '所持に戻す' : '廃棄にする';
   $('detailOv').classList.add('open');
@@ -481,7 +535,7 @@ $('dGone').onclick = () => {
   $('detailOv').classList.remove('open'); render();
   toast(b.gone ? '廃棄にしました' : '所持に戻しました');
 };
-$('list').addEventListener('click', e => { const el = e.target.closest('.book'); if (el) openDetail(el.dataset.id); });
+$('list').addEventListener('click', e => { const el = e.target.closest('.book'); if (!el) return; if (selectMode) toggleSel(el.dataset.id); else openDetail(el.dataset.id); });
 $('list').addEventListener('keydown', e => { if (e.key === 'Enter') { const el = e.target.closest('.book'); if (el) openDetail(el.dataset.id); } });
 
 /* ---- リストに保存（書き出し） ---- */
@@ -679,6 +733,111 @@ document.querySelectorAll('.overlay').forEach(ov => ov.addEventListener('click',
 document.addEventListener('keydown', e => { if (e.key === 'Escape') document.querySelectorAll('.overlay.open').forEach(o => o.classList.remove('open')); });
 ['q'].forEach(id => $(id).addEventListener('input', render));
 ['sort','filter'].forEach(id => $(id).addEventListener('change', render));
+
+/* ---- サークル名・タイトルの修正 ---- */
+// リストの書式を壊す文字の並びは無害な形に置き換える
+const cleanName = v => v.replace(/[\r\n\t]+/g,' ').replace(/ ／/g,' /').replace(/(^|\s)memo:/gi,'$1memo：').replace(/[　\s]+\[([kx]):/g,' [$1：').trim();
+$('dEditOpen').onclick = () => {
+  const b = items.find(x => x.id === currentId); if (!b) return;
+  $('eCircle').value = b.circle; $('eTitle').value = b.title;
+  $('dEditBox').hidden = false; $('dEditOpen').hidden = true; $('eTitle').focus();
+};
+$('eCancel').onclick = () => { $('dEditBox').hidden = true; $('dEditOpen').hidden = false; };
+$('eApply').onclick = () => {
+  const b = items.find(x => x.id === currentId); if (!b) return;
+  const c = cleanName($('eCircle').value).replace(/】/g,']'), t = cleanName($('eTitle').value);
+  if (!c || !t) { toast('サークル名とタイトルは空にできません'); return; }
+  if (c === b.circle && t === b.title) { $('eCancel').onclick(); return; }
+  b.circle = c; b.title = t; b.edited = true; markDirty();
+  $('dCircle').textContent = c; $('dTitle').textContent = t;
+  $('dEditBox').hidden = true; $('dEditOpen').hidden = false;
+  render(); toast('修正しました');
+};
+
+/* ---- 一括操作 ---- */
+let selectMode = false, lastList = [];
+const selected = new Set();
+function updateSelbar(){
+  $('selCnt').textContent = `${selected.size}冊を選択中`;
+  ['bTagAdd','bTagDel','bMemo','bGone','bOwn'].forEach(id => $(id).disabled = !selected.size);
+}
+function setSelectMode(on){
+  selectMode = on; if (!on) selected.clear();
+  document.body.classList.toggle('selecting', on);
+  $('selbar').classList.toggle('show', on);
+  $('selToggle').textContent = on ? '選択をやめる' : '選択';
+  updateSelbar(); render();
+}
+function toggleSel(id){ selected.has(id) ? selected.delete(id) : selected.add(id); updateSelbar(); render(); }
+$('selToggle').onclick = () => setSelectMode(!selectMode);
+$('selDone').onclick = () => setSelectMode(false);
+$('selAll').onclick = () => { lastList.forEach(id => selected.add(id)); updateSelbar(); render(); };
+$('selNone').onclick = () => { selected.clear(); updateSelbar(); render(); };
+const selItems = () => items.filter(b => selected.has(b.id));
+
+let bulkAction = null;
+function openBulk(title, html, action){
+  $('bulkTitle').textContent = title; $('bulkBody').innerHTML = html; bulkAction = action;
+  $('bulkOv').classList.add('open');
+}
+$('bulkCancel').onclick = () => $('bulkOv').classList.remove('open');
+$('bulkApply').onclick = () => { if (bulkAction && bulkAction() !== false) $('bulkOv').classList.remove('open'); };
+function applyAll(fn, msg){
+  let n = 0;
+  selItems().forEach(b => { if (fn(b)) { b.edited = true; n++; } });
+  if (n) { dirty += n - 1; markDirty(); }
+  render(); toast(n ? `${n}冊に${msg}` : '変更はありませんでした');
+}
+
+$('bTagAdd').onclick = () => openBulk(`${selected.size}冊にタグを付ける`,
+  `<label for="bulkTag">付けるタグ</label><input class="field" id="bulkTag" list="dl-tag" autocomplete="off" placeholder="入力すると候補が出ます">
+   <p class="hint" style="font-size:12px;color:var(--sub);margin:6px 0 0">すでに同じタグが付いている本はそのままです。</p>`,
+  () => {
+    const v = cleanTag($('bulkTag').value); if (!v) { toast('タグを入力してください'); return false; }
+    if (/^https?:/.test(v)) { toast('URLはタグにできません'); return false; }
+    applyAll(b => { b.tags = b.tags || []; if (b.tags.some(t => norm(t) === norm(v))) return false; b.tags.push(v); return true; }, `「${v}」を付けました`);
+  });
+
+$('bTagDel').onclick = () => {
+  const counts = new Map();
+  selItems().forEach(b => (b.tags||[]).forEach(t => counts.set(t, (counts.get(t)||0) + 1)));
+  if (!counts.size) { toast('選んだ本にはタグが付いていません'); return; }
+  const list = [...counts].sort((a,b) => b[1] - a[1] || a[0].localeCompare(b[0],'ja'));
+  openBulk('外すタグを選ぶ',
+    `<div class="radios" style="flex-direction:column;gap:8px">${list.map(([t,c],i) =>
+      `<label><input type="checkbox" value="${esc(t)}" data-i="${i}"> ${esc(t)}<span style="color:var(--sub);font-size:12px">（${c}冊）</span></label>`).join('')}</div>`,
+    () => {
+      const pick = [...$('bulkBody').querySelectorAll('input:checked')].map(x => x.value);
+      if (!pick.length) { toast('外すタグにチェックを入れてください'); return false; }
+      applyAll(b => { const before = (b.tags||[]).length; b.tags = (b.tags||[]).filter(t => !pick.includes(t)); return b.tags.length !== before; }, 'タグを外しました');
+    });
+};
+
+$('bMemo').onclick = () => openBulk(`${selected.size}冊のメモ`,
+  `<label for="bulkMemo">メモ</label><input class="field" id="bulkMemo" autocomplete="off" placeholder="「総集編に収録」など">
+   <div class="radios">
+     <label><input type="radio" name="mm" value="add" checked> 今のメモの後ろに足す</label>
+     <label><input type="radio" name="mm" value="set"> 置き換える</label>
+     <label><input type="radio" name="mm" value="clear"> 消す</label>
+   </div>`,
+  () => {
+    const mode = $('bulkBody').querySelector('input[name=mm]:checked').value;
+    const v = $('bulkMemo').value.replace(/[\r\n]+/g,' ').trim();
+    if (mode !== 'clear' && !v) { toast('メモを入力してください'); return false; }
+    if (mode === 'clear' && !confirm(`${selected.size}冊のメモを消します。よろしいですか？`)) return false;
+    applyAll(b => {
+      const before = b.memo || '';
+      b.memo = mode === 'clear' ? '' : mode === 'set' ? v : (before ? before + ' / ' + v : v);
+      return b.memo !== before;
+    }, mode === 'clear' ? 'メモを消しました' : 'メモを反映しました');
+  });
+
+$('bGone').onclick = () => {
+  if (!confirm(`${selected.size}冊を「廃棄」にします。よろしいですか？`)) return;
+  applyAll(b => { if (b.gone) return false; b.gone = true; return true; }, '廃棄にしました');
+};
+$('bOwn').onclick = () => applyAll(b => { if (!b.gone) return false; b.gone = false; return true; }, '所持に戻しました');
+
 /* ---- 起動 ---- */
 $('wipeAll').onclick = async () => {
   if (!confirm('このiPhoneのSafariに残している本・表紙・未保存の変更をすべて消します。\n（iCloudなどのリストのファイルは消えません）よろしいですか？')) return;
