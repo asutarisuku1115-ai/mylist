@@ -856,20 +856,20 @@ $('bOwn').onclick = () => applyAll(b => { if (!b.gone) return false; b.gone = fa
 /* ---- 商品ページからタグを取り込む ---- */
 const NOISE = /特集|フェア|キャンペーン|fair|ranking|point|pickup|再販|セール|倍|FP|プレゼント|当選|会場|直送|まとめ|orifesu|resale|作品一覧|対象|応援|祭|ランキング|_|【|】|^\d|\d{4}/i;
 function tagsFromText(text, withHash){
-  const lines = text.split(/\r?\n/);
-  const field = label => { const m = text.match(new RegExp('^\\s*' + label + '\\s*\\t\\s*(.+)$', 'm')); return m ? m[1].trim() : ''; };
+  text = text.replace(/\r/g,'').replace(/\u00a0/g,' ');
+  // 「このサークルのほかの作品」より前だけを見る（下に並ぶ別の本のタグを拾わないため）
+  const main = text.split(/このサークルのほかの作品|関連する作品|この作品を買った人/)[0];
+  // 「作家名」の後ろに、タブ・空白・改行のどれが来ても読めるようにする
+  const field = label => { const m = main.match(new RegExp(label + '[ \\t]*[:：]?[ \\t]*\\n?[ \\t]*([^\\n]+)')); return m ? m[1].trim() : ''; };
   const out = [];
   const author = field('作家名'); if (author) out.push(...author.split(/\s*[,、]\s*/));
-  const event = field('イベント'); if (event) out.push(event);
+  const event = field('イベント'); if (event && !/^[\s\d/]+$/.test(event)) out.push(event);
   const genre = field('ジャンル'); if (genre) out.push(...genre.split(/\s*[,、]\s*/));
   if (withHash) {
-    // 「#〇〇 #〇〇 …」が一番たくさん並んでいる行を、その商品のタグとみなす
-    let best = '', bestN = 1;
-    lines.forEach(l => { const n = (l.match(/#[^\s#]+/g) || []).length; if (n > bestN) { best = l; bestN = n; } });
-    const hs = (best.match(/#[^\s#]+/g) || []).map(h => h.slice(1)).filter(h => !NOISE.test(h));
-    out.push(...hs.slice(0, 15));
+    const hs = (main.match(/#[^\s#]+/g) || []).map(h => h.slice(1)).filter(h => !NOISE.test(h));
+    out.push(...[...new Set(hs)].slice(0, 15));
   }
-  return [...new Map(out.map(cleanTag).filter(Boolean).map(t => [norm(t), t])).values()];
+  return [...new Map(out.map(cleanTag).filter(t => t && t.length <= 40).map(t => [norm(t), t])).values()];
 }
 $('tagFile').addEventListener('change', async e => {
   const f = e.target.files[0]; e.target.value = ''; if (!f) return;
@@ -877,12 +877,14 @@ $('tagFile').addEventListener('change', async e => {
   const text = await f.text();
   const withHash = $('tagHash').checked;
   const byId = new Map(items.filter(b => idFromUrl(b.url)).map(b => [idFromUrl(b.url), b]));
-  let updated = 0, added = 0; const notFound = [];
+  let updated = 0, added = 0, pages = 0, noTag = 0; const notFound = [];
   for (const blk of text.split('@@@URL ').slice(1)) {
     const nl = blk.indexOf('\n'); const url = blk.slice(0, nl).trim(), body = blk.slice(nl + 1);
     const b = byId.get(idFromUrl(url));
     if (!b) { notFound.push(url); continue; }
+    pages++;
     const tags = tagsFromText(body, withHash);
+    if (!tags.length) noTag++;
     b.tags = b.tags || [];
     const before = b.tags.length;
     tags.forEach(t => { if (!b.tags.some(x => norm(x) === norm(t))) b.tags.push(t); });
@@ -890,7 +892,9 @@ $('tagFile').addEventListener('change', async e => {
   }
   if (updated) { dirty += updated - 1; markDirty(); }
   render();
+  const blocks = text.split('@@@URL ').length - 1;
   out.innerHTML = `${updated}冊に合計${added}個のタグを付けました` +
+    `<div style="color:var(--sub);font-weight:400;margin-top:4px">ファイル内のページ：${blocks}件／リストと結び付いた本：${pages}冊／タグが見つからなかったページ：${noTag}件</div>` +
     (notFound.length ? `<div style="color:#B3195E;font-weight:400;margin-top:4px">リストにない本のページ：${notFound.length}件</div>` : '') +
     (updated ? '<div style="font-weight:400;margin-top:4px">要らないタグは「選択」→「タグを外す」でまとめて外せます。最後に「リストに保存」を忘れずに</div>' : '');
 });
