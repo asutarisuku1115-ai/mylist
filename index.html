@@ -127,6 +127,14 @@
   .searchbar .tools::-webkit-scrollbar{display:none}
   .searchbar .tools > *{flex:none;white-space:nowrap}
   .searchbar .tools .spacer{display:none}
+  .mark{font-size:11px;border-radius:6px;padding:0 6px;font-weight:700;color:#fff}
+  .grid .book .marks{position:absolute;top:4px;left:4px;display:flex;flex-direction:column;gap:3px;z-index:1}
+  .grid .book{position:relative}
+  .grid .book .marks .mark{font-size:10px;box-shadow:0 1px 3px rgba(0,0,0,.25)}
+  .list .book .marks{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:2px}
+  .markrow{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+  .markbtn{border:1.5px solid var(--line);background:var(--white);border-radius:8px;padding:6px 10px;font-size:13px;font-weight:700;cursor:pointer;color:var(--sub)}
+  .markbtn.on{color:#fff;border-color:transparent}
 </style>
 </head>
 <body>
@@ -137,6 +145,7 @@
     <input id="q" class="search" type="search" placeholder="サークル名・タイトル・タグ・メモで検索" autocomplete="off" aria-label="検索">
     <div id="verdict" class="verdict" role="status"></div>
   <div class="tools">
+      <select id="markF" aria-label="マークで絞り込み"><option value="">マーク：すべて</option></select>
       <select id="filter" aria-label="表示する本">
         <option value="own">所持中</option>
         <option value="gone">廃棄済み</option>
@@ -175,12 +184,14 @@
         <a class="link" id="dLink" target="_blank" rel="noopener">メロンブックスで開く</a>
       </div>
     </div>
-    <button class="smalllink" id="dEditOpen" style="display:block">サークル名・タイトルを修正する</button>
+    <button class="smalllink" id="dEditOpen" style="display:block">サークル名・タイトル・URLを修正する</button>
     <div class="editbox" id="dEditBox" hidden>
       <label for="eCircle">サークル名</label>
       <input class="field" id="eCircle" list="dl-circle" autocomplete="off">
       <label for="eTitle">タイトル</label>
       <input class="field" id="eTitle" autocomplete="off">
+      <label for="eUrl">商品ページのURL</label>
+      <input class="field" id="eUrl" type="url" autocomplete="off" placeholder="https://…（空にするとURLなし）" style="font-size:14px">
       <p class="hint" style="font-size:12px;color:var(--sub);margin:8px 0 0">直しても重複チェックは元の情報のまま働きます。表紙ファイルの名前は元のままで大丈夫です（表紙を読み込み直しても、ちゃんとこの本に結び付きます）。</p>
       <div class="actions" style="margin-top:10px">
         <button class="btn ghost" id="eCancel">やめる</button>
@@ -189,6 +200,8 @@
     </div>
     <button class="filebtn alt" id="dCopyName" style="width:100%;margin-top:14px">表紙のファイル名をコピー</button>
     <input class="field" id="dName" readonly hidden style="font-size:13px;margin-top:8px">
+    <label>マーク</label>
+    <div class="markrow" id="dMarks"></div>
     <label for="dTagIn">タグ</label>
     <div class="tags" id="dTagEdit" style="gap:6px"></div>
     <div class="tagrow">
@@ -300,6 +313,7 @@
   <button id="selNone">選択を解除</button>
   <button class="hot" id="bTagAdd">タグを付ける</button>
   <button class="hot" id="bTagDel">タグを外す</button>
+  <button class="hot" id="bMark">マーク</button>
   <button class="hot" id="bMemo">メモ</button>
   <button id="bGone">廃棄にする</button>
   <button id="bOwn">所持に戻す</button>
@@ -400,16 +414,17 @@ function hl(text, terms){
 function fillDatalists(){
   const uniq = arr => [...new Set(arr.filter(Boolean))].sort((a,b) => a.localeCompare(b,'ja'));
   $('dl-circle').innerHTML = uniq(items.map(b => b.circle)).map(x => `<option value="${esc(x)}">`).join('');
-  $('dl-tag').innerHTML = uniq(items.flatMap(b => b.tags||[])).map(x => `<option value="${esc(x)}">`).join('');
+  $('dl-tag').innerHTML = uniq(items.flatMap(b => plainTags(b))).map(x => `<option value="${esc(x)}">`).join('');
 }
 function render(){
-  fillDatalists();
+  fillDatalists(); fillMarkFilter();
   $('total').textContent = items.filter(b => !b.gone).length;
   const raw = $('q').value.trim().split(/[\s　]+/).filter(Boolean);
   const terms = raw.map(norm).filter(Boolean);
   const hit = items.filter(b => { const h = norm([b.circle,b.title,(b.tags||[]).join(' '),b.memo].join(' ')); return terms.every(t => h.includes(t)); });
   const f = $('filter').value;
-  let list = hit.filter(b => f === 'all' || (f === 'gone' ? b.gone : !b.gone));
+  const mf = $('markF').value;
+  let list = hit.filter(b => (f === 'all' || (f === 'gone' ? b.gone : !b.gone)) && (!mf || (b.tags||[]).includes(mf)));
   const s = $('sort').value;
   if (s === 'new') list.sort((a,b) => b.order - a.order);
   if (s === 'old') list.sort((a,b) => a.order - b.order);
@@ -428,9 +443,10 @@ function render(){
   box.innerHTML = list.map(b => {
     const cv = covers[b.id];
     const img = cv ? `<img class="cv" src="${cv}" alt="" loading="lazy">` : `<div class="nocv" style="background:${inkFor(b.circle)}">${esc((b.circle||'?').slice(0,1))}</div>`;
-    return `<div class="book${b.gone ? ' gone' : ''}${selected.has(b.id) ? ' sel' : ''}" data-id="${b.id}" tabindex="0" role="button">${img}<div class="body">
+    return `<div class="book${b.gone ? ' gone' : ''}${selected.has(b.id) ? ' sel' : ''}" data-id="${b.id}" tabindex="0" role="button">${view === 'grid' && marksOf(b).length ? `<div class="marks">${marksOf(b).map(markBadge).join('')}</div>` : ''}${img}<div class="body">
       <div class="circle">${hl(b.circle, raw)}</div><div class="title">${hl(b.title, raw)}</div>
-      <div class="tags">${b.gone ? '<span class="gonetag">廃棄</span>' : ''}${(b.tags||[]).map(t => `<span class="tag">${hl(t, raw)}</span>`).join('')}</div>
+      ${view === 'list' && marksOf(b).length ? `<div class="marks">${marksOf(b).map(markBadge).join('')}</div>` : ''}
+      <div class="tags">${b.gone ? '<span class="gonetag">廃棄</span>' : ''}${plainTags(b).map(t => `<span class="tag">${hl(t, raw)}</span>`).join('')}</div>
       ${b.memo ? `<div class="memo">${hl(b.memo, raw)}</div>` : ''}</div></div>`;
   }).join('');
 
@@ -531,7 +547,7 @@ function openDetail(id){
   $('dCover').style.display = cv ? '' : 'none'; if (cv) $('dCover').src = cv;
   $('dCircle').textContent = b.circle; $('dTitle').textContent = b.title;
   $('dTags').innerHTML = b.gone ? '<span class="gonetag">廃棄</span>' : '';
-  $('dTagIn').value = ''; renderTagEdit(b);
+  $('dTagIn').value = ''; renderTagEdit(b); renderMarkRow(b);
   $('dLink').style.display = b.url ? '' : 'none'; $('dLink').href = b.url || '#';
   $('dMemo').value = b.memo || '';
   $('dEditBox').hidden = true; $('dEditOpen').hidden = false;
@@ -694,8 +710,9 @@ $('bulkFile').addEventListener('change', async e => {
 
 /* ---- タグの編集 ---- */
 function renderTagEdit(b){
-  $('dTagEdit').innerHTML = (b.tags||[]).length
-    ? b.tags.map((t,i) => `<span class="chip">${esc(t)}<button type="button" data-i="${i}" aria-label="${esc(t)}を外す">×</button></span>`).join('')
+  const shown = (b.tags||[]).map((t,i) => [t,i]).filter(([t]) => !isMark(t));
+  $('dTagEdit').innerHTML = shown.length
+    ? shown.map(([t,i]) => `<span class="chip">${esc(t)}<button type="button" data-i="${i}" aria-label="${esc(t)}を外す">×</button></span>`).join('')
     : '<span style="font-size:13px;color:var(--sub)">まだタグはありません</span>';
 }
 // リストの書式を壊さないよう、区切りに使う記号や改行は置き換える
@@ -705,6 +722,7 @@ function addTag(){
   const v = cleanTag($('dTagIn').value);
   if (!v) return;
   if (/^https?:/.test(v)) { toast('URLはタグにできません'); return; }
+  if (isMark(v)) { toast('「◆」で始まる名前はマーク用です。上のマーク欄を使ってください'); return; }
   b.tags = b.tags || [];
   if (b.tags.some(t => norm(t) === norm(v))) { toast('そのタグはもう付いています'); $('dTagIn').value = ''; return; }
   b.tags.push(v); b.edited = true; markDirty();
@@ -756,7 +774,7 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') document.que
 const cleanName = v => v.replace(/[\r\n\t]+/g,' ').replace(/ ／/g,' /').replace(/(^|\s)memo:/gi,'$1memo：').replace(/[　\s]+\[([kx]):/g,' [$1：').trim();
 $('dEditOpen').onclick = () => {
   const b = items.find(x => x.id === currentId); if (!b) return;
-  $('eCircle').value = b.circle; $('eTitle').value = b.title;
+  $('eCircle').value = b.circle; $('eTitle').value = b.title; $('eUrl').value = b.url || '';
   $('dEditBox').hidden = false; $('dEditOpen').hidden = true; $('eTitle').focus();
 };
 $('eCancel').onclick = () => { $('dEditBox').hidden = true; $('dEditOpen').hidden = false; };
@@ -764,8 +782,11 @@ $('eApply').onclick = () => {
   const b = items.find(x => x.id === currentId); if (!b) return;
   const c = cleanName($('eCircle').value).replace(/】/g,']'), t = cleanName($('eTitle').value);
   if (!c || !t) { toast('サークル名とタイトルは空にできません'); return; }
-  if (c === b.circle && t === b.title) { $('eCancel').onclick(); return; }
-  b.circle = c; b.title = t; b.edited = true; markDirty();
+  const u = $('eUrl').value.trim();
+  if (u && !/^https?:\/\/\S+$/.test(u)) { toast('URLは https:// から始まる形で、空白なしで入力してください'); return; }
+  if (c === b.circle && t === b.title && u === (b.url || '')) { $('eCancel').onclick(); return; }
+  b.circle = c; b.title = t; b.url = u; b.edited = true; markDirty();
+  $('dLink').style.display = u ? '' : 'none'; $('dLink').href = u || '#';
   $('dCircle').textContent = c; $('dTitle').textContent = t;
   $('dEditBox').hidden = true; $('dEditOpen').hidden = false;
   render(); toast('修正しました');
@@ -776,7 +797,7 @@ let selectMode = false, lastList = [];
 const selected = new Set();
 function updateSelbar(){
   $('selCnt').textContent = `${selected.size}冊を選択中`;
-  ['bTagAdd','bTagDel','bMemo','bGone','bOwn'].forEach(id => $(id).disabled = !selected.size);
+  ['bTagAdd','bTagDel','bMark','bMemo','bGone','bOwn','bUrls'].forEach(id => $(id).disabled = !selected.size);
 }
 function setSelectMode(on){
   selectMode = on; if (!on) selected.clear();
@@ -817,7 +838,7 @@ $('bTagAdd').onclick = () => openBulk(`${selected.size}冊にタグを付ける`
 
 $('bTagDel').onclick = () => {
   const counts = new Map();
-  selItems().forEach(b => (b.tags||[]).forEach(t => counts.set(t, (counts.get(t)||0) + 1)));
+  selItems().forEach(b => plainTags(b).forEach(t => counts.set(t, (counts.get(t)||0) + 1)));
   if (!counts.size) { toast('選んだ本にはタグが付いていません'); return; }
   const list = [...counts].sort((a,b) => b[1] - a[1] || a[0].localeCompare(b[0],'ja'));
   openBulk('外すタグを選ぶ',
@@ -907,6 +928,67 @@ $('bUrls').onclick = async () => {
   if (urls.length > 50 && !confirm(`${urls.length}件あります。一度に多いと時間がかかったり途中で止まったりするので、50件くらいずつがおすすめです。このままコピーしますか？`)) return;
   try { await navigator.clipboard.writeText('タグ取得用のURL一覧\n' + urls.join('\n')); toast(`${urls.length}件のURLをコピーしました。ショートカット「タグ取得」を実行してください`, 3500); }
   catch(err){ prompt('自動でコピーできませんでした。下の文字をすべてコピーしてください', urls.join(' ')); }
+};
+
+
+/* ---- マーク（「◆」で始まるタグとして保存） ---- */
+const MARK = '◆';
+const DEFAULT_MARKS = ['◆お気に入り', '◆要編集'];
+const isMark = t => (t || '').startsWith(MARK);
+const marksOf = b => (b.tags || []).filter(isMark);
+const plainTags = b => (b.tags || []).filter(t => !isMark(t));
+const MARK_COLORS = ['#F0448F','#E8A100','#3B7BE0','#1C9A6C','#8A4FD8','#E8613C','#2BA9B8'];
+const markColor = m => m === '◆お気に入り' ? '#F0448F' : m === '◆要編集' ? '#E8A100' : MARK_COLORS[hash(m) % MARK_COLORS.length];
+const markBadge = m => `<span class="mark" style="background:${markColor(m)}">${esc(m.slice(1))}</span>`;
+function allMarks(){ return [...new Set([...DEFAULT_MARKS, ...items.flatMap(marksOf)])]; }
+function fillMarkFilter(){
+  const sel = $('markF'), cur = sel.value;
+  sel.innerHTML = '<option value="">マーク：すべて</option>' + allMarks().map(m => `<option value="${esc(m)}">${esc(m.slice(1))}</option>`).join('');
+  sel.value = allMarks().includes(cur) ? cur : '';
+}
+function renderMarkRow(b){
+  $('dMarks').innerHTML = allMarks().map(m => {
+    const on = (b.tags || []).includes(m);
+    return `<button type="button" class="markbtn${on ? ' on' : ''}" data-m="${esc(m)}" style="${on ? `background:${markColor(m)}` : ''}" aria-pressed="${on}">${esc(m.slice(1))}</button>`;
+  }).join('') + '<button type="button" class="markbtn" id="newMark">＋新しいマーク</button>';
+}
+function askNewMark(){
+  const v = cleanTag((prompt('新しいマークの名前（例：要確認、読了、売却予定）') || '').replace(/^◆+/, ''));
+  return v ? MARK + v : '';
+}
+$('dMarks').addEventListener('click', e => {
+  const b = items.find(x => x.id === currentId); if (!b) return;
+  const btn = e.target.closest('button'); if (!btn) return;
+  let m = btn.dataset.m;
+  if (btn.id === 'newMark') { m = askNewMark(); if (!m) return; if ((b.tags||[]).includes(m)) return; }
+  b.tags = b.tags || [];
+  if (b.tags.includes(m)) b.tags = b.tags.filter(t => t !== m); else b.tags.push(m);
+  b.edited = true; markDirty(); renderMarkRow(b); render();
+});
+$('markF').addEventListener('change', render);
+$('bMark').onclick = () => {
+  openBulk(`${selected.size}冊のマーク`,
+    `<div class="radios" style="flex-direction:column;gap:10px">${allMarks().map(m => {
+      const n = selItems().filter(b => (b.tags||[]).includes(m)).length;
+      return `<label><span class="mark" style="background:${markColor(m)}">${esc(m.slice(1))}</span>
+        <select data-m="${esc(m)}" style="margin-left:auto;border:1px solid var(--line);border-radius:8px;padding:4px 6px;font-size:13px;background:var(--white)">
+          <option value="">変えない（${n}冊に付いています）</option><option value="add">付ける</option><option value="del">外す</option></select></label>`;
+    }).join('')}</div>
+    <button type="button" class="smalllink" id="bulkNewMark" style="display:block">＋新しいマークを作って付ける</button>`,
+    () => {
+      const ops = [...$('bulkBody').querySelectorAll('select[data-m]')].filter(x => x.value).map(x => [x.dataset.m, x.value]);
+      if (!ops.length) { toast('付ける・外すマークを選んでください'); return false; }
+      applyAll(b => {
+        b.tags = b.tags || []; const before = b.tags.join('\u0001');
+        ops.forEach(([m, op]) => { if (op === 'add' && !b.tags.includes(m)) b.tags.push(m); if (op === 'del') b.tags = b.tags.filter(t => t !== m); });
+        return b.tags.join('\u0001') !== before;
+      }, 'マークを反映しました');
+    });
+  $('bulkNewMark').onclick = () => {
+    const m = askNewMark(); if (!m) return;
+    applyAll(b => { b.tags = b.tags || []; if (b.tags.includes(m)) return false; b.tags.push(m); return true; }, `「${m.slice(1)}」を付けました`);
+    $('bulkOv').classList.remove('open');
+  };
 };
 
 /* ---- 起動 ---- */
