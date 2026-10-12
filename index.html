@@ -689,6 +689,12 @@ function extractFromHtml(html, url){
   const fromText = re => { const m = body.match(re); return m ? cl(m[1].replace(/\s+/g,' ').trim()) : ''; };
   const circle = g('サークル') || lab(/^サークル名?[：:]?$/) || fromText(/サークル名\s+([^\n\t]+)/) || clink();
   const author = g('作家','著者') || lab(/^(作家|著者)名?[：:]?$/);
+  if (/suruga-ya/.test(url)) {
+    // 駿河屋：見出しが「分類 タイトル / 作家 / … / サークル」、サークルは「出版社」欄、作家は「画」欄
+    const ps = h1.replace(/^\S*同人\S*\s+/, '').split(/\s+\/\s+/);
+    const authors = [...doc.querySelectorAll('th')].filter(e => /^(画|作画|著|作)$/.test(t(e))).map(e => e.nextElementSibling ? cl(t(fa(e.nextElementSibling) || e.nextElementSibling)) : '').filter(Boolean);
+    return { circle: g('出版社') || ps[ps.length - 1] || circle, title: ps[0] || title, tags: [...authors, g('元ネタ')].filter(Boolean).map(x => typeof cleanTag === 'function' ? cleanTag(x) : x), url, pageTitle: rawTitle };
+  }
   return { circle, title, tags: [author, g('イベント'), g('ジャンル')].filter(Boolean), url, pageTitle: rawTitle };
 }
 $('bulkFile').addEventListener('change', async e => {
