@@ -135,6 +135,11 @@
   .markrow{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
   .markbtn{border:1.5px solid var(--line);background:var(--white);border-radius:8px;padding:6px 10px;font-size:13px;font-weight:700;cursor:pointer;color:var(--sub)}
   .markbtn.on{color:#fff;border-color:transparent}
+  .findrow{display:flex;gap:12px;align-items:center;background:var(--white);border:1px solid var(--line);border-radius:12px;padding:8px;margin-top:8px;cursor:pointer;width:100%;text-align:left}
+  .findrow img{width:60px;aspect-ratio:7/10;object-fit:cover;border-radius:6px;flex:none;background:#E7E9F3}
+  .findrow .rk{font-size:12px;color:var(--sub)}
+  .findrow.top{border:2px solid var(--pink)}
+  .findrow .open{margin-left:auto;flex:none;color:var(--pink);font-weight:800;font-size:13px}
 </style>
 </head>
 <body>
@@ -161,7 +166,8 @@
         <button id="vGrid" aria-pressed="false">表紙</button>
       </div>
       <div class="spacer"></div>
-      <button class="importbtn" id="selToggle">選択</button>
+      <label class="importbtn" style="margin:0;display:inline-block">写真で探す<input type="file" id="photoFind" accept="image/*" capture="environment" hidden></label>
+    <button class="importbtn" id="selToggle">選択</button>
       <button class="importbtn" id="openAdd">＋追加</button>
       <button class="importbtn" id="openImport">取り込み</button>
     </div>
@@ -331,6 +337,15 @@
     </div>
   </div>
 </div>
+<div class="overlay" id="findOv">
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="findTitle">
+    <h2 id="findTitle">写真に近い本</h2>
+    <div class="result" id="findStatus" style="margin-top:0"></div>
+    <div id="findList"></div>
+    <p class="hint" style="font-size:12px;color:var(--sub);margin:10px 0 0">見つからないときは、表紙が画面いっぱいに、まっすぐ写るように撮り直してみてください。表紙を読み込んでいない本は候補に出ません。</p>
+    <div class="actions"><button class="btn ghost" id="findClose">閉じる</button></div>
+  </div>
+</div>
 <div class="toast" id="toast"></div>
 
 <script>
@@ -357,8 +372,8 @@ function updateSavebar(){ $('savebar').classList.toggle('show', dirty > 0); $('s
 window.addEventListener('beforeunload', e => { if (dirty) { e.preventDefault(); e.returnValue = ''; } });
 
 /* ---- このiPhoneのSafariにデータを残す ---- */
-function idb(){ return new Promise((res, rej) => { const r = indexedDB.open('doujin-web', 1);
-  r.onupgradeneeded = () => { r.result.createObjectStore('kv'); r.result.createObjectStore('covers'); };
+function idb(){ return new Promise((res, rej) => { const r = indexedDB.open('doujin-web', 2);
+  r.onupgradeneeded = () => { const db = r.result; ['kv','covers','feat'].forEach(n => { if (!db.objectStoreNames.contains(n)) db.createObjectStore(n); }); };
   r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); }
 async function dbGet(store, k){ try { const db = await idb(); return await new Promise(res => { const q = db.transaction(store).objectStore(store).get(k); q.onsuccess = () => res(q.result); q.onerror = () => res(undefined); }); } catch(e){ return undefined; } }
 async function dbPut(store, k, v){ try { const db = await idb(); return await new Promise(res => { const tx = db.transaction(store,'readwrite'); tx.objectStore(store).put(v, k); tx.oncomplete = () => res(true); tx.onerror = () => res(false); }); } catch(e){ return false; } }
@@ -991,10 +1006,94 @@ $('bMark').onclick = () => {
   };
 };
 
+
+/* ---- 写真で探す（表紙の見た目で近い本を探す） ---- */
+const GW = 16, GH = 22, CW = 4, CH = 6, ASPECT = 0.707;   // 同人誌の表紙はだいたいB5/A5の縦長
+const featCache = {};
+function grabPixels(src, sx, sy, sw, sh, w, h){
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const g = c.getContext('2d', { willReadFrequently: true });
+  g.drawImage(src, sx, sy, sw, sh, 0, 0, w, h);
+  return g.getImageData(0, 0, w, h).data;
+}
+// 明るさの違いに強い特徴：濃淡の並び（平均と幅をそろえる）と、色あい（明るさで割った色の比）
+function featureOf(src, sx, sy, sw, sh){
+  const p = grabPixels(src, sx, sy, sw, sh, GW, GH), gray = new Float32Array(GW * GH);
+  let m = 0; for (let i = 0; i < gray.length; i++) { gray[i] = .299*p[i*4] + .587*p[i*4+1] + .114*p[i*4+2]; m += gray[i]; }
+  m /= gray.length; let v = 0; for (const x of gray) v += (x - m) ** 2; const sd = Math.sqrt(v / gray.length) || 1;
+  for (let i = 0; i < gray.length; i++) gray[i] = (gray[i] - m) / sd;
+  const q = grabPixels(src, sx, sy, sw, sh, CW, CH), col = [];
+  for (let i = 0; i < CW * CH; i++) { const r = q[i*4], g2 = q[i*4+1], b = q[i*4+2], t = r + g2 + b + 1; col.push(r / t, g2 / t); }
+  return { g: Array.from(gray), c: col };
+}
+function similarity(a, b){
+  let corr = 0; for (let i = 0; i < a.g.length; i++) corr += a.g[i] * b.g[i]; corr /= a.g.length;
+  let cd = 0; for (let i = 0; i < a.c.length; i++) cd += Math.abs(a.c[i] - b.c[i]); cd /= a.c.length;
+  return corr - 4 * cd;
+}
+async function loadBitmap(blobOrUrl){
+  const blob = typeof blobOrUrl === 'string' ? await (await fetch(blobOrUrl)).blob() : blobOrUrl;
+  if (window.createImageBitmap) { try { return await createImageBitmap(blob); } catch(e){} }
+  const url = typeof blobOrUrl === 'string' ? blobOrUrl : await readAsDataURL(blob);
+  return await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; });
+}
+async function coverFeature(id){
+  const sig = covers[id].length;
+  if (featCache[id] && featCache[id].sig === sig) return featCache[id].f;
+  const saved = await dbGet('feat', id);
+  if (saved && saved.sig === sig) { featCache[id] = saved; return saved.f; }
+  const bmp = await loadBitmap(covers[id]);
+  const f = featureOf(bmp, 0, 0, bmp.width, bmp.height);
+  featCache[id] = { sig, f }; dbPut('feat', id, featCache[id]);
+  return f;
+}
+// 写真は背景が写り込むので、真ん中を縦長に切り抜いた候補を何通りか作って一番合うものを使う
+function photoFeatures(bmp){
+  const W = bmp.width, H = bmp.height, out = [];
+  for (const s of [1, .88, .76, .64]) {
+    let h = H * s, w = h * ASPECT;
+    if (w > W * s) { w = W * s; h = w / ASPECT; }
+    out.push(featureOf(bmp, (W - w) / 2, (H - h) / 2, w, h));
+  }
+  return out;
+}
+$('photoFind').addEventListener('change', async e => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  const ids = items.filter(b => covers[b.id]).map(b => b.id);
+  $('findList').innerHTML = ''; $('findOv').classList.add('open');
+  if (!ids.length) { $('findStatus').textContent = '表紙が読み込まれていません。「取り込み」の2.で表紙を読み込んでください'; return; }
+  const st = $('findStatus'); st.textContent = '写真を読み込み中…';
+  let photo;
+  try { photo = photoFeatures(await loadBitmap(f)); } catch(err){ st.textContent = '写真を開けませんでした'; return; }
+  const scores = [];
+  for (let i = 0; i < ids.length; i++) {
+    if (i % 25 === 0) { st.textContent = `表紙と見比べています… ${i} / ${ids.length}`; await new Promise(r => setTimeout(r)); }
+    try { const cf = await coverFeature(ids[i]); scores.push([ids[i], Math.max(...photo.map(p => similarity(p, cf)))]); } catch(err){}
+  }
+  scores.sort((a, b) => b[1] - a[1]);
+  const top = scores.slice(0, 6);
+  st.textContent = top.length ? '近い順に並んでいます。タップすると商品ページを開きます' : '比べられる表紙がありませんでした';
+  $('findList').innerHTML = top.map(([id], i) => {
+    const b = items.find(x => x.id === id);
+    return `<button type="button" class="findrow${i === 0 ? ' top' : ''}" data-id="${id}">
+      <img src="${covers[id]}" alt="">
+      <div style="min-width:0"><div class="rk">${i + 1}番目に近い${b.gone ? '・廃棄済み' : ''}</div>
+        <div class="circle">${esc(b.circle)}</div><div class="title">${esc(b.title)}</div></div>
+      <span class="open">${b.url ? '開く' : '詳細'}</span></button>`;
+  }).join('');
+});
+$('findList').addEventListener('click', e => {
+  const row = e.target.closest('.findrow'); if (!row) return;
+  const b = items.find(x => x.id === row.dataset.id); if (!b) return;
+  if (b.url) window.open(b.url, '_blank', 'noopener');
+  else { $('findOv').classList.remove('open'); openDetail(b.id); }
+});
+$('findClose').onclick = () => $('findOv').classList.remove('open');
+
 /* ---- 起動 ---- */
 $('wipeAll').onclick = async () => {
   if (!confirm('このiPhoneのSafariに残している本・表紙・未保存の変更をすべて消します。\n（iCloudなどのリストのファイルは消えません）よろしいですか？')) return;
-  await dbClear('kv'); await dbClear('covers');
+  await dbClear('kv'); await dbClear('covers'); await dbClear('feat');
   items = []; covers = {}; deleted.clear(); dirty = 0; updateSavebar(); render();
   $('importOv').classList.remove('open'); toast('消去しました');
 };
