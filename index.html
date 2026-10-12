@@ -140,6 +140,17 @@
   .findrow .rk{font-size:12px;color:var(--sub)}
   .findrow.top{border:2px solid var(--pink)}
   .findrow .open{margin-left:auto;flex:none;color:var(--pink);font-weight:800;font-size:13px}
+  .fchips{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+  .fchips:empty{display:none}
+  .fchip{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:700;background:var(--ink);color:#fff;border-radius:999px;padding:3px 4px 3px 10px}
+  .fchip button{border:0;background:rgba(255,255,255,.2);color:#fff;border-radius:50%;width:20px;height:20px;line-height:1;cursor:pointer}
+  .fmark{display:flex;align-items:center;gap:8px;margin-top:8px}
+  .fmark .seg button{font-size:12px;padding:5px 9px}
+  .circles .crow{display:flex;gap:12px;align-items:center;background:var(--white);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:8px;cursor:pointer;width:100%;text-align:left}
+  .circles .crow .cname{font-weight:800;font-size:15px;min-width:0;flex:1;word-break:break-word}
+  .circles .crow .ccount{font-size:12px;color:var(--sub);font-weight:400;display:block}
+  .circles .crow .thumbs{display:flex;gap:4px;flex:none}
+  .circles .crow .thumbs img,.circles .crow .thumbs div{width:34px;aspect-ratio:7/10;object-fit:cover;border-radius:4px;background:#E7E9F3}
 </style>
 </head>
 <body>
@@ -150,12 +161,11 @@
     <input id="q" class="search" type="search" placeholder="サークル名・タイトル・タグ・メモで検索" autocomplete="off" aria-label="検索">
     <div id="verdict" class="verdict" role="status"></div>
   <div class="tools">
-      <select id="markF" aria-label="マークで絞り込み"><option value="">マーク：すべて</option></select>
+      <button class="importbtn" id="filterBtn">絞り込み</button>
       <select id="filter" aria-label="表示する本">
         <option value="own">所持中</option>
         <option value="gone">廃棄済み</option>
         <option value="all">すべて</option>
-        <option value="nocover">表紙なし（所持中）</option>
       </select>
       <select id="sort" aria-label="並び順">
         <option value="new">新しい順</option>
@@ -165,6 +175,7 @@
       <div class="seg" role="group" aria-label="表示">
         <button id="vList" aria-pressed="true">リスト</button>
         <button id="vGrid" aria-pressed="false">表紙</button>
+        <button id="vCircle" aria-pressed="false">サークル</button>
       </div>
       <div class="spacer"></div>
       <label class="importbtn" style="margin:0;display:inline-block">写真で探す<input type="file" id="photoFind" accept="image/*" capture="environment" hidden></label>
@@ -172,6 +183,7 @@
       <button class="importbtn" id="openAdd">＋追加</button>
       <button class="importbtn" id="openImport">取り込み</button>
     </div>
+    <div class="fchips" id="fchips"></div>
   </div>
 
   <div id="list" class="list"></div>
@@ -347,6 +359,27 @@
     <div class="actions"><button class="btn ghost" id="findClose">閉じる</button></div>
   </div>
 </div>
+<div class="overlay" id="filterOv">
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="fTitle">
+    <h2 id="fTitle">絞り込み</h2>
+    <p class="hint" style="font-size:12px;color:var(--sub);margin:0">選んだ条件をすべて満たす本だけを表示します。</p>
+    <label>マーク</label>
+    <div id="fMarks"></div>
+    <label>そのほか</label>
+    <div class="radios" style="flex-direction:column;gap:10px" id="fOthers">
+      <label><input type="checkbox" data-k="nocover"> 表紙がない</label>
+      <label><input type="checkbox" data-k="notag"> タグが付いていない（マークは数えない）</label>
+      <label><input type="checkbox" data-k="nourl"> 商品ページのURLがない</label>
+      <label><input type="checkbox" data-k="hasmemo"> メモがある</label>
+    </div>
+    <label for="fCircle">サークル</label>
+    <input class="field" id="fCircle" list="dl-circle" autocomplete="off" placeholder="指定なし（候補から選べます）">
+    <div class="actions">
+      <button class="btn ghost" id="fClear">すべて解除</button>
+      <button class="btn primary" id="fApply">この条件で表示</button>
+    </div>
+  </div>
+</div>
 <div class="toast" id="toast"></div>
 
 <script>
@@ -433,14 +466,13 @@ function fillDatalists(){
   $('dl-tag').innerHTML = uniq(items.flatMap(b => plainTags(b))).map(x => `<option value="${esc(x)}">`).join('');
 }
 function render(){
-  fillDatalists(); fillMarkFilter();
+  fillDatalists(); renderFchips();
   $('total').textContent = items.filter(b => !b.gone).length;
   const raw = $('q').value.trim().split(/[\s　]+/).filter(Boolean);
   const terms = raw.map(norm).filter(Boolean);
   const hit = items.filter(b => { const h = norm([b.circle,b.title,(b.tags||[]).join(' '),b.memo].join(' ')); return terms.every(t => h.includes(t)); });
   const f = $('filter').value;
-  const mf = $('markF').value;
-  let list = hit.filter(b => (f === 'all' || (f === 'nocover' ? (!b.gone && !covers[b.id]) : f === 'gone' ? b.gone : !b.gone)) && (!mf || (b.tags||[]).includes(mf)));
+  let list = hit.filter(b => (f === 'all' || (f === 'gone' ? b.gone : !b.gone)) && passFilter(b));
   const s = $('sort').value;
   if (s === 'new') list.sort((a,b) => b.order - a.order);
   if (s === 'old') list.sort((a,b) => a.order - b.order);
@@ -455,7 +487,8 @@ function render(){
   } else { v.className='verdict'; v.innerHTML=''; }
 
   lastList = list.map(b => b.id);
-  const box = $('list'); box.className = view;
+  const box = $('list'); box.className = view === 'circle' ? 'circles' : view;
+  if (view === 'circle') { renderCircles(list, s); return; }
   box.innerHTML = list.map(b => {
     const cv = covers[b.id];
     const img = cv ? `<img class="cv" src="${cv}" alt="" loading="lazy">` : `<div class="nocv" style="background:${inkFor(b.circle)}">${esc((b.circle||'?').slice(0,1))}</div>`;
@@ -783,7 +816,8 @@ $('dDel').onclick = () => {
 function openImport(){ $('txtResult').textContent=''; $('imgResult').textContent=''; $('importOv').classList.add('open'); }
 $('openImport').onclick = openImport;
 $('impClose').onclick = () => $('importOv').classList.remove('open');
-function setView(v){ view = v; $('vList').setAttribute('aria-pressed', v==='list'); $('vGrid').setAttribute('aria-pressed', v==='grid'); render(); }
+function setView(v){ view = v; $('vList').setAttribute('aria-pressed', v==='list'); $('vGrid').setAttribute('aria-pressed', v==='grid'); $('vCircle').setAttribute('aria-pressed', v==='circle'); if (v !== 'circle') lastBookView = v; render(); }
+$('vCircle').onclick = () => setView('circle');
 $('vList').onclick = () => setView('list');
 $('vGrid').onclick = () => setView('grid');
 document.querySelectorAll('.overlay').forEach(ov => ov.addEventListener('click', e => { if (e.target === ov) ov.classList.remove('open'); }));
@@ -963,11 +997,6 @@ const MARK_COLORS = ['#F0448F','#E8A100','#3B7BE0','#1C9A6C','#8A4FD8','#E8613C'
 const markColor = m => m === '◆お気に入り' ? '#F0448F' : m === '◆要編集' ? '#E8A100' : MARK_COLORS[hash(m) % MARK_COLORS.length];
 const markBadge = m => `<span class="mark" style="background:${markColor(m)}">${esc(m.slice(1))}</span>`;
 function allMarks(){ return [...new Set([...DEFAULT_MARKS, ...items.flatMap(marksOf)])]; }
-function fillMarkFilter(){
-  const sel = $('markF'), cur = sel.value;
-  sel.innerHTML = '<option value="">マーク：すべて</option>' + allMarks().map(m => `<option value="${esc(m)}">${esc(m.slice(1))}</option>`).join('');
-  sel.value = allMarks().includes(cur) ? cur : '';
-}
 function renderMarkRow(b){
   $('dMarks').innerHTML = allMarks().map(m => {
     const on = (b.tags || []).includes(m);
@@ -987,7 +1016,6 @@ $('dMarks').addEventListener('click', e => {
   if (b.tags.includes(m)) b.tags = b.tags.filter(t => t !== m); else b.tags.push(m);
   b.edited = true; markDirty(); renderMarkRow(b); render();
 });
-$('markF').addEventListener('change', render);
 $('bMark').onclick = () => {
   openBulk(`${selected.size}冊のマーク`,
     `<div class="radios" style="flex-direction:column;gap:10px">${allMarks().map(m => {
@@ -1096,6 +1124,93 @@ $('findList').addEventListener('click', e => {
   else { $('findOv').classList.remove('open'); openDetail(b.id); }
 });
 $('findClose').onclick = () => $('findOv').classList.remove('open');
+
+
+/* ---- 複数条件の絞り込み ---- */
+const flt = { marks: {}, nocover: false, notag: false, nourl: false, hasmemo: false, circle: '' };
+let lastBookView = 'list';
+function passFilter(b){
+  const tags = b.tags || [];
+  for (const m in flt.marks) {
+    if (flt.marks[m] === 'has' && !tags.includes(m)) return false;
+    if (flt.marks[m] === 'not' && tags.includes(m)) return false;
+  }
+  if (flt.nocover && covers[b.id]) return false;
+  if (flt.notag && plainTags(b).length) return false;
+  if (flt.nourl && b.url) return false;
+  if (flt.hasmemo && !b.memo) return false;
+  if (flt.circle && b.circle !== flt.circle) return false;
+  return true;
+}
+function activeFilters(){
+  const out = [];
+  for (const m in flt.marks) out.push([`${m.slice(1)}${flt.marks[m] === 'has' ? 'あり' : 'なし'}`, () => delete flt.marks[m]]);
+  if (flt.nocover) out.push(['表紙なし', () => flt.nocover = false]);
+  if (flt.notag) out.push(['タグなし', () => flt.notag = false]);
+  if (flt.nourl) out.push(['URLなし', () => flt.nourl = false]);
+  if (flt.hasmemo) out.push(['メモあり', () => flt.hasmemo = false]);
+  if (flt.circle) out.push([`サークル：${flt.circle}`, () => flt.circle = '']);
+  return out;
+}
+let chipActions = [];
+function renderFchips(){
+  const af = activeFilters(); chipActions = af.map(x => x[1]);
+  $('filterBtn').textContent = af.length ? `絞り込み（${af.length}）` : '絞り込み';
+  $('filterBtn').style.background = af.length ? 'var(--ink)' : ''; $('filterBtn').style.color = af.length ? '#fff' : '';
+  $('fchips').innerHTML = af.map(([label], i) => `<span class="fchip">${esc(label)}<button type="button" data-i="${i}" aria-label="${esc(label)}の条件を外す">×</button></span>`).join('');
+}
+$('fchips').addEventListener('click', e => { const b = e.target.closest('button[data-i]'); if (!b) return; chipActions[Number(b.dataset.i)](); render(); });
+function openFilter(){
+  $('fMarks').innerHTML = allMarks().map(m => {
+    const st = flt.marks[m] || '';
+    return `<div class="fmark"><span class="mark" style="background:${markColor(m)}">${esc(m.slice(1))}</span>
+      <div class="seg" role="group" data-m="${esc(m)}" style="margin-left:auto">
+        <button type="button" data-v="" aria-pressed="${st === ''}">指定なし</button>
+        <button type="button" data-v="has" aria-pressed="${st === 'has'}">付いている</button>
+        <button type="button" data-v="not" aria-pressed="${st === 'not'}">付いていない</button>
+      </div></div>`;
+  }).join('');
+  $('fOthers').querySelectorAll('input[data-k]').forEach(x => x.checked = !!flt[x.dataset.k]);
+  $('fCircle').value = flt.circle;
+  $('filterOv').classList.add('open');
+}
+$('filterBtn').onclick = openFilter;
+$('fMarks').addEventListener('click', e => {
+  const b = e.target.closest('button[data-v]'); if (!b) return;
+  b.parentElement.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x === b));
+});
+$('fApply').onclick = () => {
+  flt.marks = {};
+  $('fMarks').querySelectorAll('.seg').forEach(g => { const on = g.querySelector('button[aria-pressed="true"]'); if (on && on.dataset.v) flt.marks[g.dataset.m] = on.dataset.v; });
+  $('fOthers').querySelectorAll('input[data-k]').forEach(x => flt[x.dataset.k] = x.checked);
+  flt.circle = $('fCircle').value.trim();
+  $('filterOv').classList.remove('open'); render();
+};
+$('fClear').onclick = () => {
+  flt.marks = {}; flt.nocover = flt.notag = flt.nourl = flt.hasmemo = false; flt.circle = '';
+  $('filterOv').classList.remove('open'); render();
+};
+
+/* ---- サークル別の一覧 ---- */
+function renderCircles(list, sortMode){
+  const groups = new Map();
+  list.forEach(b => { if (!groups.has(b.circle)) groups.set(b.circle, []); groups.get(b.circle).push(b); });
+  let rows = [...groups];
+  if (sortMode === 'circle') rows.sort((a,b) => norm(a[0]).localeCompare(norm(b[0]),'ja'));
+  else rows.sort((a,b) => b[1].length - a[1].length || norm(a[0]).localeCompare(norm(b[0]),'ja'));
+  $('list').innerHTML = rows.map(([c, bs]) => {
+    const thumbs = bs.slice().sort((a,b) => b.order - a.order).slice(0, 4).map(b => covers[b.id] ? `<img src="${covers[b.id]}" alt="" loading="lazy">` : `<div style="background:${inkFor(c)}"></div>`).join('');
+    const gone = bs.filter(b => b.gone).length;
+    return `<button type="button" class="crow" data-c="${esc(c)}"><div class="cname">${esc(c)}<span class="ccount">${bs.length}冊${gone ? `（うち廃棄${gone}冊）` : ''}</span></div><div class="thumbs">${thumbs}</div></button>`;
+  }).join('');
+  $('empty').innerHTML = rows.length ? '' : '該当するサークルはありません';
+}
+$('list').addEventListener('click', e => {
+  const r = e.target.closest('.crow'); if (!r) return;
+  e.stopImmediatePropagation();
+  flt.circle = r.dataset.c; setView(lastBookView);
+  window.scrollTo(0, 0);
+}, true);
 
 /* ---- 起動 ---- */
 $('wipeAll').onclick = async () => {
