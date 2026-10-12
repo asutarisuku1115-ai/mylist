@@ -667,7 +667,7 @@ $('a-save').onclick = () => {
 
 
 /* ---- まとめて取得したページから本を追加 ---- */
-const idFromUrl = u => ((u||'').match(/(?:product_id=|cid=)(\w+)/) || [])[1] || '';
+const idFromUrl = u => ((u||'').match(/(?:product_id=|cid=|\/product\/detail\/)(\w+)/) || [])[1] || '';
 function extractFromHtml(html, url){
   const doc = new DOMParser().parseFromString(html, 'text/html');
   const t = e => e ? e.textContent.replace(/\s+/g,' ').trim() : '';
