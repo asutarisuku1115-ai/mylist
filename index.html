@@ -155,6 +155,7 @@
         <option value="own">所持中</option>
         <option value="gone">廃棄済み</option>
         <option value="all">すべて</option>
+        <option value="nocover">表紙なし（所持中）</option>
       </select>
       <select id="sort" aria-label="並び順">
         <option value="new">新しい順</option>
@@ -323,7 +324,7 @@
   <button class="hot" id="bMemo">メモ</button>
   <button id="bGone">廃棄にする</button>
   <button id="bOwn">所持に戻す</button>
-  <button id="bUrls">URLをコピー（タグ取得用）</button>
+  <button id="bUrls">URLをコピー</button>
   <button id="selDone">完了</button>
 </div></div>
 
@@ -439,7 +440,7 @@ function render(){
   const hit = items.filter(b => { const h = norm([b.circle,b.title,(b.tags||[]).join(' '),b.memo].join(' ')); return terms.every(t => h.includes(t)); });
   const f = $('filter').value;
   const mf = $('markF').value;
-  let list = hit.filter(b => (f === 'all' || (f === 'gone' ? b.gone : !b.gone)) && (!mf || (b.tags||[]).includes(mf)));
+  let list = hit.filter(b => (f === 'all' || (f === 'nocover' ? (!b.gone && !covers[b.id]) : f === 'gone' ? b.gone : !b.gone)) && (!mf || (b.tags||[]).includes(mf)));
   const s = $('sort').value;
   if (s === 'new') list.sort((a,b) => b.order - a.order);
   if (s === 'old') list.sort((a,b) => a.order - b.order);
@@ -947,7 +948,7 @@ $('bUrls').onclick = async () => {
   const urls = selItems().map(b => b.url).filter(u => /^https?:/.test(u || ''));
   if (!urls.length) { toast('選んだ本には商品ページのURLがありません'); return; }
   if (urls.length > 50 && !confirm(`${urls.length}件あります。一度に多いと時間がかかったり途中で止まったりするので、50件くらいずつがおすすめです。このままコピーしますか？`)) return;
-  try { await navigator.clipboard.writeText('タグ取得用のURL一覧\n' + urls.join('\n')); toast(`${urls.length}件のURLをコピーしました。ショートカット「タグ取得」を実行してください`, 3500); }
+  try { await navigator.clipboard.writeText('タグ取得用のURL一覧\n' + urls.join('\n')); toast(`${urls.length}件のURLをコピーしました。タグなら「タグ取得」、表紙なら「あとで登録」→「まとめて取得」を実行してください`, 4500); }
   catch(err){ prompt('自動でコピーできませんでした。下の文字をすべてコピーしてください', urls.join(' ')); }
 };
 
