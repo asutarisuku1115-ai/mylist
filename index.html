@@ -181,7 +181,7 @@
       <input class="field" id="eCircle" list="dl-circle" autocomplete="off">
       <label for="eTitle">タイトル</label>
       <input class="field" id="eTitle" autocomplete="off">
-      <p class="hint" style="font-size:12px;color:var(--sub);margin:8px 0 0">直しても重複チェックは元の情報のまま働きます。表紙ファイルの名前は変わらないので、このアプリの表紙はそのまま残ります。</p>
+      <p class="hint" style="font-size:12px;color:var(--sub);margin:8px 0 0">直しても重複チェックは元の情報のまま働きます。表紙ファイルの名前は元のままで大丈夫です（表紙を読み込み直しても、ちゃんとこの本に結び付きます）。</p>
       <div class="actions" style="margin-top:10px">
         <button class="btn ghost" id="eCancel">やめる</button>
         <button class="btn primary" id="eApply">修正する</button>
@@ -465,6 +465,9 @@ $('txtFile').addEventListener('change', async e => {
 });
 
 /* ---- 表紙（開いている間だけ表示） ---- */
+// 重複チェック用のキー（元のサークル名・タイトル）から、最初に保存された表紙ファイル名を割り出す。
+// アプリで名前を直しても、元の名前の表紙ファイルと結び付けられる
+const origNameKey = b => { const m = (b.key || '').match(/^\[[kx]:(.*?)\/(.*)\]$/); return m ? keyNorm(('【' + m[1] + '】' + m[2]).replace(/[\/\\:*?"<>|_]/g, '')) : ''; };
 const fileNameOf = b => ('【'+b.circle+'】'+b.title).replace(/[\/\\:*?"<>|]/g,'_').slice(0,80);
 const nameKey = s => keyNorm(s.normalize('NFC').replace(/(\.(jpe?g|png|webp|heic|gif))+$/i,'').replace(/ \d+$/,'').replace(/_/g,''));
 // ファイルの先頭を見て本当の形式を判定（拡張子が.jpgでも中身が違うことがあるため）
@@ -503,7 +506,7 @@ async function resize(file, max=240){
 }
 $('imgFiles').addEventListener('change', async e => {
   const files = [...e.target.files]; e.target.value = ''; if (!files.length) return;
-  const entries = items.map(b => [nameKey(fileNameOf(b)), b]);
+  const entries = items.flatMap(b => [[nameKey(fileNameOf(b)), b], [origNameKey(b), b]]).filter(([k]) => k);
   const byName = new Map(entries);
   const byId = new Map(items.filter(b => idFromUrl(b.url)).map(b => [idFromUrl(b.url).toLowerCase(), b]));
   const find = n => byName.get(n) || (n.length >= 4 ? (entries.find(([k]) => k.startsWith(n) || n.startsWith(k)) || [])[1] : null);
